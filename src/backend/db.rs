@@ -10,8 +10,8 @@ fn initialize_new_db<P: AsRef<Path>>(path: P) -> Result<()> {
     BEGIN;
 
     -- __METADATA_TYPE stores all pre-defined and user-defined data types
-    CREATE TABLE __METADATA_TABLE_COLUMN_TYPE (
-        ID INTEGER PRIMARY KEY,
+    CREATE TABLE _METADATA_TABLE_COLUMN_TYPE_ (
+        _ROWID_ INTEGER PRIMARY KEY,
         MODE INTEGER NOT NULL DEFAULT 0 
             -- Modes are:
             -- 0 = primitive
@@ -21,42 +21,49 @@ fn initialize_new_db<P: AsRef<Path>>(path: P) -> Result<()> {
             -- 4 = child object
             -- 5 = child table
     );
-    INSERT INTO __METADATA_TABLE_COLUMN_TYPE (ID, MODE) VALUES (0, 0); -- Always null
-    INSERT INTO __METADATA_TABLE_COLUMN_TYPE (ID, MODE) VALUES (1, 0); -- Boolean
-    INSERT INTO __METADATA_TABLE_COLUMN_TYPE (ID, MODE) VALUES (2, 0); -- Integer
-    INSERT INTO __METADATA_TABLE_COLUMN_TYPE (ID, MODE) VALUES (3, 0); -- Number
-    INSERT INTO __METADATA_TABLE_COLUMN_TYPE (ID, MODE) VALUES (4, 0); -- Date
-    INSERT INTO __METADATA_TABLE_COLUMN_TYPE (ID, MODE) VALUES (5, 0); -- Timestamp
-    INSERT INTO __METADATA_TABLE_COLUMN_TYPE (ID, MODE) VALUES (6, 0); -- BLOB
-    INSERT INTO __METADATA_TABLE_COLUMN_TYPE (ID, MODE) VALUES (7, 0); -- BLOB (displayed as image thumbnail)
-    INSERT INTO __METADATA_TABLE_COLUMN_TYPE (ID, MODE) VALUES (8, 0); -- Text
-    INSERT INTO __METADATA_TABLE_COLUMN_TYPE (ID, MODE) VALUES (9, 0); -- Text (JSON)
+    INSERT INTO _METADATA_TABLE_COLUMN_TYPE_ (_ROWID_, MODE) VALUES (0, 0); -- Always null
+    INSERT INTO _METADATA_TABLE_COLUMN_TYPE_ (_ROWID_, MODE) VALUES (1, 0); -- Boolean
+    INSERT INTO _METADATA_TABLE_COLUMN_TYPE_ (_ROWID_, MODE) VALUES (2, 0); -- Integer
+    INSERT INTO _METADATA_TABLE_COLUMN_TYPE_ (_ROWID_, MODE) VALUES (3, 0); -- Number
+    INSERT INTO _METADATA_TABLE_COLUMN_TYPE_ (_ROWID_, MODE) VALUES (4, 0); -- Date
+    INSERT INTO _METADATA_TABLE_COLUMN_TYPE_ (_ROWID_, MODE) VALUES (5, 0); -- Timestamp
+    INSERT INTO _METADATA_TABLE_COLUMN_TYPE_ (_ROWID_, MODE) VALUES (6, 0); -- BLOB
+    INSERT INTO _METADATA_TABLE_COLUMN_TYPE_ (_ROWID_, MODE) VALUES (7, 0); -- BLOB (displayed as image thumbnail)
+    INSERT INTO _METADATA_TABLE_COLUMN_TYPE_ (_ROWID_, MODE) VALUES (8, 0); -- Text
+    INSERT INTO _METADATA_TABLE_COLUMN_TYPE_ (_ROWID_, MODE) VALUES (9, 0); -- Text (JSON)
 
-    -- __METADATA_TABLE stores all user-defined tables and data types
-    CREATE TABLE __METADATA_TABLE (
-        ID INTEGER PRIMARY KEY REFERENCES __METADATA_TABLE_COLUMN_TYPE(ID),
+    -- _METADATA_TABLE_ stores all user-defined tables and data types
+    CREATE TABLE _METADATA_TABLE_ (
+        _ROWID_ INTEGER PRIMARY KEY,
+        PARENT_ID INTEGER,
         NAME TEXT NOT NULL,
-        FOREIGN KEY (ID) REFERENCES __METADATA_TABLE_COLUMN_TYPE (ID) 
+        FOREIGN KEY (_ROWID_) REFERENCES _METADATA_TABLE_COLUMN_TYPE_ (_ROWID_) 
             ON UPDATE CASCADE
-            ON DELETE CASCADE
+            ON DELETE CASCADE,
+        FOREIGN KEY (PARENT_ID) REFERENCES _METADATA_TABLE_(_ROWID_) 
+            ON UPDATE CASCADE
+            ON DELETE SET NULL
     );
 
-    -- __METADATA_TABLE_COLUMN stores all columns of user-defined tables and data types
-    CREATE TABLE __METADATA_TABLE_COLUMN (
-        ID INTEGER PRIMARY KEY,
+    -- _METADATA_TABLE_COLUMN_ stores all columns of user-defined tables and data types
+    CREATE TABLE _METADATA_TABLE_COLUMN_ (
+        _ROWID_ INTEGER PRIMARY KEY,
         TABLE_ID INTEGER NOT NULL,
         NAME TEXT NOT NULL,
         TYPE_ID INTEGER NOT NULL DEFAULT 8,
         COLUMN_WIDTH INTEGER NOT NULL DEFAULT 100,
             -- Column width, as measured in pixels
+        COLUMN_ORDERING INTEGER NOT NULL DEFAULT 0,
+            -- The ordering of columns as displayed in the table
         IS_NULLABLE BIT NOT NULL DEFAULT 1,
         IS_UNIQUE BIT NOT NULL DEFAULT 0,
         IS_PRIMARY_KEY BIT NOT NULL DEFAULT 0,
+        IS_SURROGATE_KEY BIT NOT NULL DEFAULT 0,
         DEFAULT_VALUE ANY,
-        FOREIGN KEY (TABLE_ID) REFERENCES __METADATA_TABLE (ID)
+        FOREIGN KEY (TABLE_ID) REFERENCES _METADATA_TABLE_ (_ROWID_)
             ON UPDATE CASCADE
             ON DELETE CASCADE,
-        FOREIGN KEY (TYPE_ID) REFERENCES __METADATA_TABLE_COLUMN_TYPE (ID)
+        FOREIGN KEY (TYPE_ID) REFERENCES _METADATA_TABLE_COLUMN_TYPE_ (_ROWID_)
             ON UPDATE CASCADE
             ON DELETE SET DEFAULT
     );
@@ -117,8 +124,21 @@ pub fn undo() -> Result<()> {
         *savepoint_id = *savepoint_id - 1;
     }
     // If savepoint_id = 0, do nothing because the edit stack is empty
+    Ok(());
 }
 
 /// Creates a new table.
-pub fn create_table(name: &str) -> Result<()> {
+pub fn create_table(name: &str) -> Result<i64> {
+    create_savepoint()?;
+    
+    let mut tx = current_db_transaction.lock().unwrap();
+    *tx.execute("INSERT INTO _METADATA_TABLE_COLUMN_TYPE_ (MODE) VALUES (3);");
+    let table_id: i64 = *tx.last_insert_rowid();
+    *tx.execute(
+        "INSERT INTO _METADATA_TABLE_ (_ROWID_, NAME) VALUES (?1, ?2);",
+        params![table_id, String::from(name)]
+    );
+    let create_cmd: String = String::from("CREATE TABLE TABLE") + table_id.to_string() + String::from(" (_ROWID_ INTEGER PRIMARY KEY);");
+    *tx.execute(&create_cmd);
+    Ok(table_id);
 }
