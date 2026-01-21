@@ -21,15 +21,6 @@
   -webkit-text-size-adjust: 100%;
 }
 
-.container {
-  margin: 0;
-  padding-top: 10vh;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  text-align: center;
-}
-
 .logo {
   height: 6em;
   padding: 1.5em;
@@ -95,6 +86,7 @@ button {
   margin-right: 5px;
 }
 
+/*
 @media (prefers-color-scheme: dark) {
   :root {
     color: #f6f6f6;
@@ -113,4 +105,58 @@ button {
   button:active {
     background-color: #0f0f0f69;
   }
+}
+*/
+
+body {
+  position: absolute;
+  width: 100vw;
+  height: 100vh;
+  margin: 0;
+}
+
+.top-sidebar {
+  position: absolute;
+  top: 0;
+  height: 1.4em;
+  left: 0;
+  right: 0;
+  display: flex;
+  flex-direction: row;
+  gap: 8px;
+  margin: 0;
+  padding: 0.3em 8px 0;
+  background-color: #e0e0e0;
+}
+
+.tab {
+  border-bottom-left-radius: 0;
+  border-bottom-right-radius: 0;
+  border-bottom: 0 solid transparent;
+  padding: 0.4em 0.6em;
+  font-size: 0.75em;
+  box-shadow: none;
+}
+.tab:active {
+  position: relative;
+  padding: 0.5em 0.7em 0;
+  top: -0.15em;
+}
+
+.container {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 1.7em;
+  bottom: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.left-container-sidebar {
+  position: absolute;
+  width: 200px;
+  height: 100%;
+  flex-direction: row;
+  overflow-y: scroll;
 }
