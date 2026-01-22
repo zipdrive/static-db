@@ -8,7 +8,8 @@ pub fn run() {
         .plugin(tauri_plugin_opener::init())
         .invoke_handler(tauri::generate_handler![
             backend::init,
-            backend::dialog__create_table,
+            backend::dialog_close,
+            backend::dialog_create_table,
             backend::create_table,
         ])
         .run(tauri::generate_context!())

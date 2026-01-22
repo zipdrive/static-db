@@ -5,10 +5,32 @@
     <link rel="stylesheet" href="/src/styles.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>StaticDB</title>
-    <script type="module" src="/src/frontend/index.ts" defer></script>
+    <script>
+        import { invoke } from "@tauri-apps/api/core";
+
+        function createTable() {
+            
+            invoke("create_table", {});
+        }
+
+        function cancel() {
+            invoke("dialog_close", {});
+        }
+    </script>
   </head>
 
   <body>
-    
+    <form>
+        <table>
+            <tr>
+                <td>Table Name:</td>
+                <td><input name="tableName" type="text" /></td>
+            </tr>
+        </table>
+        <div class="dialog-buttons">
+            <button>Create Table</button>
+            <button>Cancel</button>
+        </div>
+    </form>
   </body>
 </html>
