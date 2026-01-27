@@ -97,6 +97,7 @@ impl MetadataColumnType {
 }
 
 #[derive(Serialize)]
+#[serde(rename_all="camelCase")]
 /// The most bare-bones version of table column metadata, used solely for populating the list of table columns
 pub struct Metadata {
     oid: i64,
@@ -263,7 +264,7 @@ pub fn send_metadata_list(table_oid: i64, column_channel: Channel<Metadata>) -> 
                 c.IS_PRIMARY_KEY
             FROM METADATA_TABLE_COLUMN c
             INNER JOIN METADATA_TABLE_COLUMN_TYPE t ON t.OID = c.TYPE_OID
-            WHERE c.OID = ?1 
+            WHERE c.TABLE_OID = ?1 
             ORDER BY c.COLUMN_ORDERING ASC;",
          params![table_oid], 
         &mut |row| {

@@ -14,7 +14,7 @@ pub enum Cell {
     },
     ColumnValue {
         column_oid: i64,
-        display_value: String
+        display_value: Option<String>
     }
 }
 
@@ -94,6 +94,7 @@ pub fn push(table_oid: i64) -> Result<i64, error::Error> {
     return Ok(row_oid);
 }
 
+/// Sends all cells for the table through a channel.
 pub fn send_table_data(table_oid: i64, cell_channel: Channel<Cell>) -> Result<(), error::Error> {
     let action = db::begin_readonly_db_action()?;
 
@@ -102,7 +103,7 @@ pub fn send_table_data(table_oid: i64, cell_channel: Channel<Cell>) -> Result<()
     let mut select_cmd_tables: String = format!("FROM TABLE{table_oid} t");
     let mut ord: usize = 1;
     let mut table_num: i64 = 1;
-    let mut ord_to_column_oid: HashMap<usize, i64> = HashMap::<usize, i64>::new();
+    let mut ord_to_column_oid: LinkedList<(usize, i64)> = LinkedList::<(usize, i64)>::new();
     action.query_iterate(
         "SELECT 
             c.OID,
@@ -110,7 +111,7 @@ pub fn send_table_data(table_oid: i64, cell_channel: Channel<Cell>) -> Result<()
             t.MODE
         FROM METADATA_TABLE_COLUMN c
         INNER JOIN METADATA_TABLE_COLUMN_TYPE t ON t.OID = c.TYPE_OID
-        WHERE TABLE_OID = ?1
+        WHERE c.TABLE_OID = ?1
         ORDER BY c.COLUMN_ORDERING;",
         params![table_oid], 
         &mut |row| {
@@ -148,12 +149,13 @@ pub fn send_table_data(table_oid: i64, cell_channel: Channel<Cell>) -> Result<()
                 }
             }
 
-            ord_to_column_oid.insert(ord, column_oid);
+            ord_to_column_oid.push_back((ord, column_oid));
             ord += 1;
             return Ok(());
         }
     )?;
     let table_select_cmd = format!("{select_cmd_cols} {select_cmd_tables}");
+    println!("{select_cmd_cols} {select_cmd_tables}");
 
     // Iterate over the results, sending each cell to the frontend
     action.query_iterate(
@@ -161,11 +163,17 @@ pub fn send_table_data(table_oid: i64, cell_channel: Channel<Cell>) -> Result<()
         [], 
         &mut |row| {
             // Start by sending the OID, which is the first ordinal
+            println!("Sending row with row OID {}.", row.get::<_, i64>(0)?);
+            println!("Number of columns in row: {:?}", row);
             cell_channel.send(Cell::RowStart { row_oid: row.get(0)? })?;
 
             // Iterate over the columns, sending over the displayed value of that cell in the current row for each
-            for (ord, column_oid) in ord_to_column_oid.clone() {
-                cell_channel.send(Cell::ColumnValue { column_oid: column_oid, display_value: row.get(ord)? })?;
+            println!("Number of columns: {}", ord_to_column_oid.len());
+            for (ord, column_oid) in ord_to_column_oid.iter() {
+                println!("Ord: {}, OID: {}", *ord, *column_oid);
+                let display_value = row.get::<_, Option<String>>(*ord)?;
+                println!("Display value: \"{:?}\"", display_value);
+                cell_channel.send(Cell::ColumnValue { column_oid: *column_oid, display_value: row.get(*ord)? })?;
             }
 
             // Conclude the row's iteration

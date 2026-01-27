@@ -61,18 +61,22 @@ export async function displayTable(tableOid: number) {
     oid: number, 
     name: string,
     width: number,
-    type_oid: number,
-    type_mode: number,
-    is_nullable: boolean,
-    is_unique: boolean,
-    is_primary_key: boolean,
+    columnType: { primitive: string } 
+      | { singleSelectDropdown: number }
+      | { multiSelectDropdown: number }
+      | { reference: number } 
+      | { childObject: number } 
+      | { childTable: number },
+    isNullable: boolean,
+    isUnique: boolean,
+    isPrimaryKey: boolean,
   };
 
   type TableCell = {
     rowOid: number
   } | {
     columnOid: number,
-    displayValue: string
+    displayValue: string | null
   };
 
   // Strip the former contents of the table
@@ -86,6 +90,8 @@ export async function displayTable(tableOid: number) {
   let tableColumnList: TableColumn[] = []
   const onReceiveColumn = new Channel<TableColumn>();
   onReceiveColumn.onmessage = (column) => {
+    console.debug(`Received column with OID ${column.oid}.`);
+
     // Add the column to the list of columns
     tableColumnList.push(column);
 
@@ -110,6 +116,8 @@ export async function displayTable(tableOid: number) {
     });
 
   // Add a final column header that is a button to add a new column
+  const numColumns = tableColumnList.length;
+  console.debug(`Number of columns: ${numColumns}`);
   let tableAddColumnHeaderNode = document.createElement('th');
   if (tableAddColumnHeaderNode != null) {
     tableAddColumnHeaderNode.id = 'add-new-column-button';
@@ -117,7 +125,7 @@ export async function displayTable(tableOid: number) {
     tableAddColumnHeaderNode.addEventListener('click', async (_) => {
       await invoke("dialog_create_table_column", {
         tableOid: tableOid,
-        columnOrdering: tableColumnList.length
+        columnOrdering: numColumns
       }).catch(async e => {
           await message(e, {
             title: 'Error while opening dialog box to create table.',
@@ -147,22 +155,24 @@ export async function displayTable(tableOid: number) {
 
   // Set up a channel to populate the rows of the table
   let rowOids: number[] = [];
-  const onReceiveRow = new Channel<TableCell>();
+  const onReceiveCell = new Channel<TableCell>();
   let currentRowNode: HTMLTableRowElement | null = null;
-  onReceiveRow.onmessage = (row) => {
-    if ('rowOid' in row) {
+  onReceiveCell.onmessage = (cell) => {
+    if ('rowOid' in cell) {
       // New row
-      rowOids.push(row.rowOid);
+      rowOids.push(cell.rowOid);
       currentRowNode = document.createElement('tr');
-      currentRowNode.insertAdjacentHTML('beforeend', `<td style="text-align: center;">${row.rowOid}</td>`);
+      currentRowNode.insertAdjacentHTML('beforeend', `<td style="text-align: center;">${cell.rowOid}</td>`);
       tableBodyNode?.insertAdjacentElement('beforeend', currentRowNode);
 
       // TODO context menu for OID
     } else {
+      console.debug(`Received cell for column with OID ${cell.columnOid}.`);
+
       // Add cell to current row
       if (currentRowNode != null) {
         let tableCellNode: HTMLElement = document.createElement('td');
-        tableCellNode.innerText = row.displayValue;
+        tableCellNode.innerText = cell.displayValue ?? '';
         currentRowNode.insertAdjacentElement('beforeend', tableCellNode);
 
         // TODO add context menu for cell
@@ -171,7 +181,7 @@ export async function displayTable(tableOid: number) {
   };
 
   // Send a command to Rust to get the list of rows from the database
-  await invoke("get_table_data", { tableOid: tableOid, cellChannel: onReceiveRow })
+  await invoke("get_table_data", { tableOid: tableOid, cellChannel: onReceiveCell })
     .catch(async e => {
       await message(e, {
         title: 'Error while retrieving rows of table.',
