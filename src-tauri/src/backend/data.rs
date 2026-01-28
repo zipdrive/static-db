@@ -94,6 +94,18 @@ pub fn push(table_oid: i64) -> Result<i64, error::Error> {
     return Ok(row_oid);
 }
 
+/// Delete the row with the given OID.
+pub fn delete(table_oid: i64, row_oid: i64) -> Result<(), error::Error> {
+    let action = db::begin_db_action()?;
+
+    // Delete the row
+    let delete_cmd = format!("DELETE FROM TABLE{table_oid} WHERE OID = ?1;");
+    action.trans.execute(&delete_cmd, params![row_oid])?;
+
+    // Return the row OID
+    return Ok(());
+}
+
 /// Sends all cells for the table through a channel.
 pub fn send_table_data(table_oid: i64, cell_channel: Channel<Cell>) -> Result<(), error::Error> {
     let action = db::begin_readonly_db_action()?;

@@ -82,7 +82,7 @@ export async function displayTable(tableOid: number) {
   // Strip the former contents of the table
   let tableNode: HTMLTableElement | null = document.querySelector('#table-content');
   if (tableNode)
-    tableNode.innerHTML = '<thead><tr><th>OID</th></tr></thead><tbody></tbody><tfoot><tr><td id="add-new-row-button">Add New Row</td></tr></tfoot>';
+    tableNode.innerHTML = '<thead><tr><th></th></tr></thead><tbody></tbody><tfoot><tr></tr></tfoot>';
   let tableHeaderRowNode: HTMLTableRowElement | null = document.querySelector('#table-content > thead > tr');
   let tableBodyNode: HTMLElement | null = document.querySelector('#table-content > tbody');
 
@@ -90,9 +90,8 @@ export async function displayTable(tableOid: number) {
   let tableColumnList: TableColumn[] = []
   const onReceiveColumn = new Channel<TableColumn>();
   onReceiveColumn.onmessage = (column) => {
-    console.debug(`Received column with OID ${column.oid}.`);
-
     // Add the column to the list of columns
+    const columnOid = column.oid;
     tableColumnList.push(column);
 
     // Add a header for the column
@@ -102,7 +101,19 @@ export async function displayTable(tableOid: number) {
       tableHeaderNode.innerText = column.name;
       tableHeaderRowNode?.insertAdjacentElement('beforeend', tableHeaderNode);
 
-      // TODO context menu for header
+      // Add listener to pull up context menu
+      tableHeaderNode.addEventListener('contextmenu', async (e) => {
+        e.preventDefault();
+        e.returnValue = false;
+
+        await invoke("contextmenu_table_column", { tableOid: tableOid, columnOid: columnOid })
+          .catch(async e => {
+            await message(e, {
+              title: 'Error while displaying context menu for table column.',
+              kind: 'error'
+            });
+          });
+      });
     }
   };
 
@@ -117,7 +128,6 @@ export async function displayTable(tableOid: number) {
 
   // Add a final column header that is a button to add a new column
   const numColumns = tableColumnList.length;
-  console.debug(`Number of columns: ${numColumns}`);
   let tableAddColumnHeaderNode = document.createElement('th');
   if (tableAddColumnHeaderNode != null) {
     tableAddColumnHeaderNode.id = 'add-new-column-button';
@@ -137,21 +147,23 @@ export async function displayTable(tableOid: number) {
   }
 
   // Set the span of the footer
-  let tableFooterCellNode: HTMLElement | null = document.querySelector('#add-new-row-button');
-  if (tableFooterCellNode) {
-    // Set the footer to span the entire row
-    tableFooterCellNode.setAttribute('colspan', (tableColumnList.length + 2).toString());
-    // Set what it should do on click
-    tableFooterCellNode.addEventListener('click', (_) => {
-      invoke('push_row', { tableOid: tableOid })
-        .catch(async (e) => {
-          await message(e, {
-            title: 'Error while adding new row into table.',
-            kind: 'error'
-          });
+  let tableFooterRowNode: HTMLElement | null = document.querySelector('#table-content > tfoot > tr');
+  let tableFooterCellNode = document.createElement('td');
+  tableFooterCellNode.id = 'add-new-row-button';
+  tableFooterCellNode.innerText = 'Add New Row';
+  // Set the footer to span the entire row
+  tableFooterCellNode.setAttribute('colspan', (tableColumnList.length + 2).toString());
+  // Set what it should do on click
+  tableFooterCellNode.addEventListener('click', (_) => {
+    invoke('push_row', { tableOid: tableOid })
+      .catch(async (e) => {
+        await message(e, {
+          title: 'Error while adding new row into table.',
+          kind: 'error'
         });
-    });
-  }
+      });
+  });
+  tableFooterRowNode?.insertAdjacentElement('beforeend', tableFooterCellNode);
 
   // Set up a channel to populate the rows of the table
   let rowOids: number[] = [];
@@ -160,22 +172,50 @@ export async function displayTable(tableOid: number) {
   onReceiveCell.onmessage = (cell) => {
     if ('rowOid' in cell) {
       // New row
-      rowOids.push(cell.rowOid);
+      const rowOid = cell.rowOid;
+      rowOids.push(rowOid);
       currentRowNode = document.createElement('tr');
-      currentRowNode.insertAdjacentHTML('beforeend', `<td style="text-align: center;">${cell.rowOid}</td>`);
+      currentRowNode.insertAdjacentHTML('beforeend', `<td style="text-align: center;">${rowOid}</td>`);
       tableBodyNode?.insertAdjacentElement('beforeend', currentRowNode);
 
-      // TODO context menu for OID
-    } else {
-      console.debug(`Received cell for column with OID ${cell.columnOid}.`);
+      // Add listener to pull up context menu
+      currentRowNode.addEventListener('contextmenu', async (e) => {
+        e.preventDefault();
+        e.returnValue = false;
 
+        await invoke("contextmenu_table_row", { tableOid: tableOid, rowOid: rowOid })
+          .catch(async e => {
+            await message(e, {
+              title: 'Error while displaying context menu for table row.',
+              kind: 'error'
+            });
+          });
+      });
+    } else {
       // Add cell to current row
       if (currentRowNode != null) {
+        // Get current row and column OID
+        const rowOid = rowOids[rowOids.length - 1];
+        const columnOid = cell.columnOid;
+
+        // Insert cell node
         let tableCellNode: HTMLElement = document.createElement('td');
         tableCellNode.innerText = cell.displayValue ?? '';
         currentRowNode.insertAdjacentElement('beforeend', tableCellNode);
 
-        // TODO add context menu for cell
+        // Add listener to pull up context menu
+        tableCellNode.addEventListener('contextmenu', async (e) => {
+          e.preventDefault();
+          e.returnValue = false;
+
+          await invoke("contextmenu_table_cell", { tableOid: tableOid, columnOid: columnOid, rowOid: rowOid })
+            .catch(async e => {
+              await message(e, {
+                title: 'Error while displaying context menu for table cell.',
+                kind: 'error'
+              });
+            });
+        });
       }
     }
   };

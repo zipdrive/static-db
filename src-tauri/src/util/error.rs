@@ -35,3 +35,19 @@ impl From<TauriError> for Error {
         Error::TauriError(e)
     }
 }
+
+impl Into<String> for Error {
+    fn into(self) -> String {
+        match self {
+            Self::AdhocError(s) => { return s.into(); },
+            Self::RusqliteError(e) => { 
+                // TODO later
+                return String::from(""); 
+            },
+            Self::TauriError(e) => { 
+                // TODO later
+                return String::from(""); 
+            }
+        }
+    }
+}

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 use rusqlite::fallible_streaming_iterator::FallibleStreamingIterator;
-use rusqlite::{params, Row, Error as RusqliteError};
+use rusqlite::{params, Row, Error as RusqliteError, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
 use crate::backend::{column, db};
@@ -8,6 +8,7 @@ use crate::util::error;
 
 #[derive(Serialize, Deserialize)]
 pub enum Primitive {
+    Any,        // Mode = 0 && OID = 0
     Boolean,    // Mode = 0 && OID = 1
     Integer,    // Mode = 0 && OID = 2
     Number,     // Mode = 0 && OID = 3
@@ -32,31 +33,31 @@ pub enum MetadataColumnType {
 
 impl MetadataColumnType {
     /// Converts a type from the database OID and mode.
-    fn from_database(type_oid: i64, type_mode: i64) -> Result<MetadataColumnType, error::Error> {
+    fn from_database(type_oid: i64, type_mode: i64) -> MetadataColumnType {
         match type_mode {
             0 => {
                 match type_oid {
-                    1 => { return Ok(Self::Primitive(Primitive::Boolean)); },
-                    2 => { return Ok(Self::Primitive(Primitive::Integer)); },
-                    3 => { return Ok(Self::Primitive(Primitive::Number)); },
-                    4 => { return Ok(Self::Primitive(Primitive::Date)); },
-                    5 => { return Ok(Self::Primitive(Primitive::Timestamp)); },
-                    6 => { return Ok(Self::Primitive(Primitive::Text)); },
-                    7 => { return Ok(Self::Primitive(Primitive::JSON)); },
-                    8 => { return Ok(Self::Primitive(Primitive::File)); },
-                    9 => { return Ok(Self::Primitive(Primitive::Image)); },
+                    1 => { return Self::Primitive(Primitive::Boolean); },
+                    2 => { return Self::Primitive(Primitive::Integer); },
+                    3 => { return Self::Primitive(Primitive::Number); },
+                    4 => { return Self::Primitive(Primitive::Date); },
+                    5 => { return Self::Primitive(Primitive::Timestamp); },
+                    6 => { return Self::Primitive(Primitive::Text); },
+                    7 => { return Self::Primitive(Primitive::JSON); },
+                    8 => { return Self::Primitive(Primitive::File); },
+                    9 => { return Self::Primitive(Primitive::Image); },
                     _ => {
-                        return Err(error::Error::AdhocError("Unknown primitive type encountered."));
+                        return Self::Primitive(Primitive::Any);
                     }
                 }
             },
-            1 => { return Ok(Self::SingleSelectDropdown(type_oid)); },
-            2 => { return Ok(Self::MultiSelectDropdown(type_oid)); },
-            3 => { return Ok(Self::Reference(type_oid)); },
-            4 => { return Ok(Self::ChildObject(type_oid)); },
-            5 => { return Ok(Self::ChildTable(type_oid)); },
+            1 => { return Self::SingleSelectDropdown(type_oid); },
+            2 => { return Self::MultiSelectDropdown(type_oid); },
+            3 => { return Self::Reference(type_oid); },
+            4 => { return Self::ChildObject(type_oid); },
+            5 => { return Self::ChildTable(type_oid); },
             _ => {
-                return Err(error::Error::AdhocError("Unknown type encountered."));
+                return Self::Primitive(Primitive::Any);
             }
         }
     }
@@ -65,6 +66,7 @@ impl MetadataColumnType {
     fn get_type_oid(&self) -> i64 {
         return match self {
             Self::Primitive(prim) => match prim {
+                Primitive::Any => 0,
                 Primitive::Boolean => 1,
                 Primitive::Integer => 2,
                 Primitive::Number => 3,
@@ -132,6 +134,7 @@ pub fn create(table_oid: i64, column_name: &str, column_type: MetadataColumnType
             
             // Add the column to the table
             let sqlite_type = match prim {
+                Primitive::Any => "ANY",
                 Primitive::Boolean => "TINYINT",
                 Primitive::Integer => "INTEGER",
                 Primitive::Number => "FLOAT",
@@ -249,6 +252,115 @@ pub fn create(table_oid: i64, column_name: &str, column_type: MetadataColumnType
     }
 }
 
+/// Delete the column with the given OID.
+pub fn delete(column_oid: i64) -> Result<(), error::Error> {
+    let action = db::begin_db_action()?;
+    action.trans.query_one(
+        "SELECT
+            c.TYPE_OID,
+            t.MODE,
+            c.TABLE_OID
+        FROM METADATA_TABLE_COLUMN c
+        INNER JOIN METADATA_TABLE_COLUMN_TYPE t ON t.OID = c.TYPE_OID
+        WHERE c.OID = ?1;", 
+        params![column_oid], 
+        |row| {
+            let column_type = MetadataColumnType::from_database(row.get(0)?, row.get(1)?);
+            let table_oid: i64 = row.get(2)?;
+            match column_type {
+                MetadataColumnType::Primitive(_)
+                | MetadataColumnType::Reference(_)
+                | MetadataColumnType::ChildObject(_)  => {
+                    // Delete the column from the data
+                    let alter_cmd = format!("ALTER TABLE TABLE{table_oid} DROP COLUMN COLUMN{column_oid};");
+                    action.trans.execute(&alter_cmd, [])?;
+
+                    // Delete the column from the metadata
+                    action.trans.execute(
+                        "DELETE FROM METADATA_TABLE_COLUMN WHERE OID = ?1", 
+                        params![column_oid]
+                    )?;
+                    return Ok(());
+                },
+                MetadataColumnType::SingleSelectDropdown(column_type_oid) => {
+                    // Drop the column from the data table
+                    let alter_cmd = format!("ALTER TABLE TABLE{table_oid} DROP COLUMN COLUMN{column_oid};");
+                    action.trans.execute(&alter_cmd, [])?;
+
+                    // Drop the dropdown values table
+                    let drop_cmd = format!("DROP TABLE TABLE{column_type_oid};");
+                    action.trans.execute(&drop_cmd, [])?;
+
+                    // Delete the column from the metadata
+                    action.trans.execute(
+                        "DELETE FROM METADATA_TABLE_COLUMN WHERE OID = ?1", 
+                        params![column_oid]
+                    )?;
+
+                    // Delete the type from the metadata
+                    action.trans.execute(
+                        "DELETE FROM METADATA_TABLE_COLUMN_TYPE WHERE OID = ?1", 
+                        params![column_type_oid]
+                    )?;
+                    return Ok(());
+                },
+                MetadataColumnType::MultiSelectDropdown(column_type_oid) => {
+                    // Drop the relationship table
+                    let drop_relationship_cmd = format!("DROP TABLE TABLE{column_type_oid}_MULTISELECT;");
+                    action.trans.execute(&drop_relationship_cmd, [])?;
+
+                    // Drop the dropdown values table
+                    let drop_cmd = format!("DROP TABLE TABLE{column_type_oid};");
+                    action.trans.execute(&drop_cmd, [])?;
+
+                    // Delete the column from the metadata
+                    action.trans.execute(
+                        "DELETE FROM METADATA_TABLE_COLUMN WHERE OID = ?1", 
+                        params![column_oid]
+                    )?;
+
+                    // Delete the type from the metadata
+                    action.trans.execute(
+                        "DELETE FROM METADATA_TABLE_COLUMN_TYPE WHERE OID = ?1", 
+                        params![column_type_oid]
+                    )?;
+                    return Ok(());
+                },
+                MetadataColumnType::ChildTable(column_type_oid) => {
+                    // Drop the surrogate view of the child table
+                    let drop_view_cmd = format!("DROP VIEW TABLE{column_type_oid}_SURROGATE;");
+                    action.trans.execute(&drop_view_cmd, [])?;
+
+                    // Drop the child table
+                    let drop_cmd = format!("DROP TABLE TABLE{column_type_oid};");
+                    action.trans.execute(&drop_cmd, [])?;
+
+                    // Delete the child table from the metadata
+                    action.trans.execute(
+                        "DELETE FROM METADATA_TABLE WHERE OID = ?1", 
+                        params![column_type_oid]
+                    )?;
+
+                    // Delete the column from the metadata
+                    action.trans.execute(
+                        "DELETE FROM METADATA_TABLE_COLUMN WHERE OID = ?1", 
+                        params![column_oid]
+                    )?;
+
+                    // Delete the type from the metadata
+                    action.trans.execute(
+                        "DELETE FROM METADATA_TABLE_COLUMN_TYPE WHERE OID = ?1", 
+                        params![column_type_oid]
+                    )?;
+                    return Ok(());
+                }
+            }
+        }
+    ).optional()?;
+    return Ok(());
+}
+
+/// Send a metadata list of columns.
 pub fn send_metadata_list(table_oid: i64, column_channel: Channel<Metadata>) -> Result<(), error::Error> {
     let action = db::begin_readonly_db_action()?;
 
@@ -272,7 +384,7 @@ pub fn send_metadata_list(table_oid: i64, column_channel: Channel<Metadata>) -> 
                 oid: row.get(0)?,
                 name: row.get(1)?,
                 width: row.get(2)?,
-                column_type: MetadataColumnType::from_database(row.get(3)?, row.get(4)?)?,
+                column_type: MetadataColumnType::from_database(row.get(3)?, row.get(4)?),
                 is_nullable: row.get(5)?,
                 is_unique: row.get(6)?,
                 is_primary_key: row.get(7)?,

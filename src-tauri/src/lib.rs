@@ -14,9 +14,11 @@ pub fn run() {
             backend::get_table_list,
             backend::dialog_create_table_column,
             backend::create_table_column,
+            backend::contextmenu_table_column,
             backend::get_table_column_list,
             backend::push_row,
             backend::insert_row,
+            backend::contextmenu_table_row,
             backend::get_table_data,
         ])
         .on_window_event(|window, event| {

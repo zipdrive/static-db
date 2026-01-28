@@ -2,7 +2,9 @@ mod db;
 mod table;
 mod column;
 mod data;
+use tauri::menu::{ContextMenu, Menu, MenuItem, MenuBuilder};
 use tauri::{AppHandle, WebviewWindowBuilder, WebviewUrl, Emitter, Size, PhysicalSize, Manager};
+use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
 use tauri::ipc::Channel;
 use crate::util::error;
 
@@ -94,6 +96,60 @@ pub fn create_table_column(app: AppHandle, table_oid: i64, column_name: String, 
 }
 
 #[tauri::command]
+/// Create a context menu for a table column.
+pub async fn contextmenu_table_column(app: AppHandle, window: tauri::Window, table_oid: i64, column_oid: i64) -> Result<(), error::Error> {
+    // Construct the context menu
+    let contextmenu = MenuBuilder::new(&app)
+        .text("insert_column", "Insert New Column")
+        .text("edit_column", "Edit Column")
+        .text("delete_column", "Delete Column")
+        .build()?;
+    
+    // Listen for when an option is selected from the menu
+    app.on_menu_event(move |app: &AppHandle, event| {
+        match event.id().0.as_str() {
+            "insert_column" => {
+
+            },
+            "edit_column" => {
+
+            },
+            "delete_column" => {
+                match column::delete(column_oid) {
+                    Ok(_) => { 
+                        msg_update_table_data(app, table_oid);
+                        return (); 
+                    },
+                    Err(e) => {
+                        app.dialog()
+                            .message(e) 
+                            .kind(MessageDialogKind::Error)
+                            .title("Error while deleting column.")
+                            .blocking_show();
+
+                        match db::undo_db_action() {
+                            Ok(_) => { return (); },
+                            Err(e_undo) => {
+                                app.dialog()
+                                    .message(e_undo) 
+                                    .kind(MessageDialogKind::Error)
+                                    .title("Error while undoing partial column deletion.")
+                                    .blocking_show();
+                            }
+                        } 
+                    }
+                }
+            },
+            _ => {}
+        }
+    });
+
+    // Display the context menu
+    contextmenu.popup(window)?;
+    return Ok(());
+}
+
+#[tauri::command]
 pub fn get_table_column_list(table_oid: i64, column_channel: Channel<column::Metadata>) -> Result<(), error::Error> {
     // Use channel to send BasicMetadata objects
     column::send_metadata_list(table_oid, column_channel)?;
@@ -114,6 +170,79 @@ pub fn insert_row(app: AppHandle, table_oid: i64, row_oid: i64) -> Result<i64, e
     let row_oid = data::insert(table_oid, row_oid)?;
     msg_update_table_data(&app, table_oid);
     return Ok(row_oid);
+}
+
+#[tauri::command]
+/// Create a context menu for a table column.
+pub async fn contextmenu_table_row(app: AppHandle, window: tauri::Window, table_oid: i64, row_oid: i64) -> Result<(), error::Error> {
+    // Construct the context menu
+    let contextmenu = MenuBuilder::new(&app)
+        .text("insert_row", "Insert New Row")
+        .text("delete_row", "Delete Row")
+        .build()?;
+    
+    // Listen for when an option is selected from the menu
+    app.on_menu_event(move |app: &AppHandle, event| {
+        match event.id().0.as_str() {
+            "insert_row" => {
+                match data::insert(table_oid, row_oid) {
+                    Ok(_) => { 
+                        msg_update_table_data(app, table_oid);
+                        return (); 
+                    },
+                    Err(e) => {
+                        app.dialog()
+                            .message(e) 
+                            .kind(MessageDialogKind::Error)
+                            .title("Error while inserting row.")
+                            .blocking_show();
+
+                        match db::undo_db_action() {
+                            Ok(_) => { return (); },
+                            Err(e_undo) => {
+                                app.dialog()
+                                    .message(e_undo) 
+                                    .kind(MessageDialogKind::Error)
+                                    .title("Error while undoing partial row insertion.")
+                                    .blocking_show();
+                            }
+                        } 
+                    }
+                }
+            },
+            "delete_row" => {
+                match data::delete(table_oid, row_oid) {
+                    Ok(_) => { 
+                        msg_update_table_data(app, table_oid);
+                        return (); 
+                    },
+                    Err(e) => {
+                        app.dialog()
+                            .message(e) 
+                            .kind(MessageDialogKind::Error)
+                            .title("Error while deleting row.")
+                            .blocking_show();
+
+                        match db::undo_db_action() {
+                            Ok(_) => { return (); },
+                            Err(e_undo) => {
+                                app.dialog()
+                                    .message(e_undo) 
+                                    .kind(MessageDialogKind::Error)
+                                    .title("Error while undoing partial row deletion.")
+                                    .blocking_show();
+                            }
+                        } 
+                    }
+                }
+            },
+            _ => {}
+        }
+    });
+
+    // Display the context menu
+    contextmenu.popup(window)?;
+    return Ok(());
 }
 
 #[tauri::command]
