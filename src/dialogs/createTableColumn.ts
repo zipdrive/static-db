@@ -39,7 +39,7 @@ window.addEventListener("DOMContentLoaded", () => {
         const isNullable: boolean = (document.getElementById('column-is-nullable') as HTMLInputElement)?.checked;
         let isUnique: boolean = (document.getElementById('column-is-unique') as HTMLInputElement)?.checked;
         let isPrimaryKey: boolean = (document.getElementById('column-is-primary-key') as HTMLInputElement)?.checked;
-        const columnWidth = parseFloat((document.getElementById('column-width') as HTMLInputElement)?.value);
+        const columnStyle: string = (document.getElementById('column-style') as HTMLTextAreaElement)?.value;
         let columnType: { primitive: string } 
         | { singleSelectDropdown: number }
         | { multiSelectDropdown: number }
@@ -112,7 +112,7 @@ window.addEventListener("DOMContentLoaded", () => {
             tableOid: parseInt(tableOid),
             columnName: columnName,
             columnType: columnType,
-            columnWidth: columnWidth,
+            columnStyle: columnStyle,
             columnOrdering: parseInt(columnOrdering),
             isNullable: isNullable,
             isUnique: isUnique,

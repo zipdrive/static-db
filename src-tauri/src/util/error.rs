@@ -1,5 +1,6 @@
 use rusqlite::Error as RusqliteError;
 use tauri::Error as TauriError;
+use serde::Serialize;
 use tauri::ipc::InvokeError;
 
 pub enum Error {
@@ -50,4 +51,12 @@ impl Into<String> for Error {
             }
         }
     }
+}
+
+
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+/// A flag for a validation check that was not passed.
+pub struct FailedValidation {
+    pub description: String 
 }

@@ -14,11 +14,11 @@ pub fn run() {
             backend::get_table_list,
             backend::dialog_create_table_column,
             backend::create_table_column,
-            backend::contextmenu_table_column,
             backend::get_table_column_list,
             backend::push_row,
             backend::insert_row,
             backend::delete_row,
+            backend::try_update_primitive_value,
             backend::get_table_data,
             backend::get_table_row
         ])

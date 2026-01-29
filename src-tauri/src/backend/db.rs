@@ -88,8 +88,8 @@ fn initialize_new_db_at_path<P: AsRef<Path>>(path: P) -> Result<(), error::Error
         TABLE_OID INTEGER NOT NULL,
         NAME TEXT NOT NULL DEFAULT 'Column',
         TYPE_OID INTEGER NOT NULL DEFAULT 8,
-        COLUMN_WIDTH INTEGER NOT NULL DEFAULT 100,
-            -- Column width, as measured in pixels
+        COLUMN_CSS_STYLE TEXT DEFAULT 'width: 100;',
+            -- Column CSS style, applied via colgroup
         COLUMN_ORDERING INTEGER NOT NULL DEFAULT 0,
             -- The ordering of columns as displayed in the table
         IS_NULLABLE TINYINT NOT NULL DEFAULT 1,

@@ -2,6 +2,7 @@ import { Menu, MenuItem } from "@tauri-apps/api/menu";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from '@tauri-apps/api/event';
 import { message } from "@tauri-apps/plugin-dialog";
+import { ColumnType, ColumnCellInfo, addTableCellToRow } from "./tableutils";
 
 async function updateTableListAsync() {
   // Remove the tables in the sidebar that were present before
@@ -57,13 +58,6 @@ export async function createTable() {
 
 let currentTableOid: number = NaN;
 
-type ColumnType = { primitive: string } 
-  | { singleSelectDropdown: number }
-  | { multiSelectDropdown: number }
-  | { reference: number } 
-  | { childObject: number } 
-  | { childTable: number };
-
 /**
  * Adds a row to the current table.
  * @param tableBodyNode 
@@ -74,6 +68,7 @@ function addRowToTable(tableBodyNode: HTMLElement, rowOid: number): HTMLTableRow
   tableRowNode.id = `table-content-row-${rowOid}`;
   let tableRowOidNode = document.createElement('td');
   tableRowOidNode.style.textAlign = 'center';
+  tableRowOidNode.style.padding = '2px 6px';
   tableRowOidNode.innerText = rowOid.toString();
   tableRowNode.insertAdjacentElement('beforeend', tableRowOidNode);
   tableBodyNode?.insertAdjacentElement('beforeend', tableRowNode);
@@ -132,81 +127,6 @@ function addRowToTable(tableBodyNode: HTMLElement, rowOid: number): HTMLTableRow
 }
 
 /**
- * Adds a cell to a row in the current table.
- * @param currentRowNode 
- * @param rowOid 
- * @param cell 
- */
-function addCellToTableRow(currentRowNode: HTMLElement, rowOid: number, cell: { columnOid: number, columnType: ColumnType, displayValue: string | null }) {
-  const columnOid = cell.columnOid;
-
-  // Insert cell node
-  let tableCellNode: HTMLTableCellElement = document.createElement('td');
-  if (cell.displayValue) {
-    tableCellNode.innerText = cell.displayValue;
-  } else {
-    tableCellNode.classList.add('null-cell');
-  }
-  currentRowNode.insertAdjacentElement('beforeend', tableCellNode);
-
-  // Add listener to start editing when clicked
-  tableCellNode.addEventListener('click', async (_) => {
-    if ('primitive' in cell.columnType) {
-      // TODO
-    } else if ('singleSelectDropdown' in cell.columnType) {
-      // TODO
-    } else if ('multiSelectDropdown' in cell.columnType) {
-      // TODO
-    } else if ('reference' in cell.columnType) {
-      // TODO
-    } else if ('')
-  });
-
-  // Add listener to pull up context menu
-  tableCellNode.addEventListener('contextmenu', async (e) => {
-    e.preventDefault();
-    e.returnValue = false;
-
-    const contextMenuItems = await Promise.all([
-      MenuItem.new({
-        text: 'Cut',
-        action: async () => {
-          
-        }
-      }),
-      MenuItem.new({
-        text: 'Copy',
-        action: async () => {
-          
-        }
-      }),
-      MenuItem.new({
-        text: 'Paste',
-        action: async () => {
-          
-        }
-      }),
-      MenuItem.new({
-        text: 'Edit Cell',
-        action: async () => {
-          
-        }
-      })
-    ]);
-    const contextMenu = await Menu.new({
-      items: contextMenuItems
-    });
-    await contextMenu.popup()
-      .catch(async e => {
-        await message(e, {
-          title: 'Error while displaying context menu for table column.',
-          kind: 'error'
-        });
-      });
-  });
-}
-
-/**
  * Displays the data for a table.
  * @param tableOid The OID of the table.
  */
@@ -217,25 +137,20 @@ export async function displayTableAsync(tableOid: number) {
   type TableColumn = {
     oid: number, 
     name: string,
-    width: number,
+    columnStyle: string,
     columnType: ColumnType,
     isNullable: boolean,
     isUnique: boolean,
     isPrimaryKey: boolean,
   };
 
-  type TableCell = {
-    rowOid: number
-  } | {
-    columnOid: number,
-    columnType: ColumnType,
-    displayValue: string | null
-  };
+  type TableCell = { rowOid: number } | ColumnCellInfo;
 
   // Strip the former contents of the table
   let tableNode: HTMLTableElement | null = document.querySelector('#table-content');
   if (tableNode)
-    tableNode.innerHTML = '<thead><tr><th></th></tr></thead><tbody></tbody><tfoot><tr></tr></tfoot>';
+    tableNode.innerHTML = '<colgroup><col span="1"></colgroup><thead><tr><th></th></tr></thead><tbody></tbody><tfoot><tr></tr></tfoot>';
+  let tableColgroupNode: HTMLElement | null = document.querySelector('#table-content > colgroup');
   let tableHeaderRowNode: HTMLTableRowElement | null = document.querySelector('#table-content > thead > tr');
   let tableBodyNode: HTMLElement | null = document.querySelector('#table-content > tbody');
 
@@ -250,7 +165,13 @@ export async function displayTableAsync(tableOid: number) {
     // Add a header for the column
     let tableHeaderNode: HTMLElement | null = document.createElement('th');
     if (tableHeaderNode != null) {
-      tableHeaderNode.style.columnWidth = `${column.width}px`;
+      let tableColNode: HTMLElement = document.createElement('col');
+      tableColNode.setAttribute('span', '1');
+      tableColNode.classList.add(`table-column-${columnOid}`);
+      tableColgroupNode?.insertAdjacentElement('beforeend', tableColNode);
+
+      
+
       tableHeaderNode.innerText = column.name;
       tableHeaderRowNode?.insertAdjacentElement('beforeend', tableHeaderNode);
 
@@ -348,7 +269,7 @@ export async function displayTableAsync(tableOid: number) {
       if (currentRowNode != null) {
         // Get current row and column OID
         const rowOid = rowOids[rowOids.length - 1];
-        addCellToTableRow(currentRowNode, rowOid, cell);
+        addTableCellToRow(currentRowNode, tableOid, rowOid, cell);
       }
     }
   };
@@ -375,13 +296,7 @@ export async function updateRowAsync(tableOid: number, rowOid: number) {
     return;
   }
 
-  type TableCell = {
-    rowExists: boolean
-  } | {
-    columnOid: number,
-    columnType: ColumnType,
-    displayValue: string | null
-  };
+  type TableCell = { rowExists: boolean } | ColumnCellInfo;
 
   let tableRowNode: HTMLTableRowElement | null = document.getElementById(`table-content-row-${rowOid}`) as HTMLTableRowElement;
 
@@ -413,7 +328,7 @@ export async function updateRowAsync(tableOid: number, rowOid: number) {
     } else {
       // Add cell to current row
       if (tableRowNode != null) {
-        addCellToTableRow(tableRowNode, rowOid, cell);
+        addTableCellToRow(tableRowNode, tableOid, rowOid, cell);
       }
     }
   };

@@ -74,10 +74,13 @@
                         <input name="column-is-primary-key" id="column-is-primary-key" type="checkbox" />
                     </td>
                 </tr>
-                <tr class="parameter-text parameter-bool parameter-int parameter-number parameter-date parameter-timestamp parameter-childTable parameter-object parameter-reference parameter-file parameter-image parameter-json">
-                    <td><label for="column-width">Column Width:</label></td>
+                <tr>
+                    <td colspan="2">Advanced</td>
+                </tr>
+                <tr class="parameter-advanced parameter-text parameter-bool parameter-int parameter-number parameter-date parameter-timestamp parameter-childTable parameter-object parameter-reference parameter-file parameter-image parameter-json">
+                    <td><label for="column-style">Column Style:</label></td>
                     <td>
-                        <input type="number" name="column-width" id="column-width" value="100" />
+                        <textarea name="column-style" id="column-style">width: 180;</textarea>
                     </td>
                 </tr>
             </tbody>

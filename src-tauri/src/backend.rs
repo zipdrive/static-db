@@ -93,65 +93,11 @@ pub async fn dialog_create_table_column(app: AppHandle, table_oid: i64, column_o
 
 #[tauri::command]
 /// Create a new column in a table.
-pub fn create_table_column(app: AppHandle, table_oid: i64, column_name: String, column_type: column::MetadataColumnType, column_ordering: i64, column_width: i64, is_nullable: bool, is_unique: bool, is_primary_key: bool) -> Result<i64, error::Error> {
+pub fn create_table_column(app: AppHandle, table_oid: i64, column_name: String, column_type: column::MetadataColumnType, column_ordering: i64, column_style: &str, is_nullable: bool, is_unique: bool, is_primary_key: bool) -> Result<i64, error::Error> {
     // Wrapper for column::create
-    let column_oid = column::create(table_oid, &column_name, column_type, column_ordering, column_width, is_nullable, is_unique, is_primary_key)?;
+    let column_oid = column::create(table_oid, &column_name, column_type, column_ordering, column_style, is_nullable, is_unique, is_primary_key)?;
     msg_update_table_data(&app, table_oid);
     return Ok(column_oid);
-}
-
-#[tauri::command]
-/// Create a context menu for a table column.
-pub async fn contextmenu_table_column(app: AppHandle, window: tauri::Window, table_oid: i64, column_oid: i64) -> Result<(), error::Error> {
-    // Construct the context menu
-    let contextmenu = MenuBuilder::new(&window)
-        .text("insert_column", "Insert New Column")
-        .text("edit_column", "Edit Column")
-        .text("delete_column", "Delete Column")
-        .build()?;
-    
-    // Listen for when an option is selected from the menu
-    app.on_menu_event(move |app: &AppHandle, event| {
-        match event.id().0.as_str() {
-            "insert_column" => {
-
-            },
-            "edit_column" => {
-
-            },
-            "delete_column" => {
-                match column::delete(column_oid) {
-                    Ok(_) => { 
-                        msg_update_table_data(app, table_oid);
-                        return (); 
-                    },
-                    Err(e) => {
-                        app.dialog()
-                            .message(e) 
-                            .kind(MessageDialogKind::Error)
-                            .title("Error while deleting column.")
-                            .blocking_show();
-
-                        match db::undo_db_action() {
-                            Ok(_) => { return (); },
-                            Err(e_undo) => {
-                                app.dialog()
-                                    .message(e_undo) 
-                                    .kind(MessageDialogKind::Error)
-                                    .title("Error while undoing partial column deletion.")
-                                    .blocking_show();
-                            }
-                        } 
-                    }
-                }
-            },
-            _ => {}
-        }
-    });
-
-    // Display the context menu
-    contextmenu.popup(window)?;
-    return Ok(());
 }
 
 #[tauri::command]
@@ -183,6 +129,14 @@ pub fn delete_row(app: AppHandle, table_oid: i64, row_oid: i64) -> Result<i64, e
     data::delete(table_oid, row_oid)?;
     msg_update_table_row(&app, table_oid, row_oid);
     return Ok(row_oid);
+}
+
+#[tauri::command]
+/// Attempts to update a column with type Primitive, SingleSelectDropdown, Reference.
+pub fn try_update_primitive_value(app: AppHandle, table_oid: i64, row_oid: i64, column_oid: i64, new_primitive_value: String) -> Result<(), error::Error> {
+    data::try_update_primitive_value(table_oid, row_oid, column_oid, new_primitive_value)?;
+    msg_update_table_row(&app, table_oid, row_oid);
+    return Ok(());
 }
 
 #[tauri::command]

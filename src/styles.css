@@ -3,10 +3,12 @@
   --main-color-light: #fcfcfc;
   --main-color-semidark: #f0f0f0;
   --main-color-dark: #d8d8d8;
+  --text-color-light: #3f3f3f;
   --text-color-neutral: #0f0f0f;
   --text-color-link: #646cff;
   --text-color-link-hover: #535bf2;
   --accent-color: #396cd8;
+  --error-color: #e996a0;
 
   font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
   font-size: 16px;
@@ -202,10 +204,11 @@ body {
 }
 
 .container-inner {
-
+  overflow: auto;
 }
 
 #table-content {
+  table-layout: fixed;
   border: var(--main-color-dark) 1px solid;
   border-top: none;
   border-right: none;
@@ -221,6 +224,11 @@ body {
 }
 #table-content th, #table-content td {
   border: var(--main-color-dark) 1px solid;
+}
+#table-content td {
+  padding: 0;
+}
+#table-content th {
   padding: 2px 6px;
 }
 
@@ -229,6 +237,8 @@ body {
   color: var(--text-color-link);
   border: none;
   background-color: unset;
+  white-space: nowrap;
+  font-weight: normal;
 }
 #table-content #add-new-row-button {
   cursor: pointer;
@@ -239,6 +249,67 @@ body {
 }
 #table-content #add-new-column-button:hover, #table-content #add-new-row-button:hover {
   color: var(--text-color-link-hover);
+}
+
+#table-content input, #table-content textarea {
+  padding: 2px 6px;
+  min-width: 100%;
+  field-sizing: content;
+  font-size: inherit;
+  font-family: inherit;
+  background-color: transparent;
+  border: none;
+  box-shadow: none;
+  resize: none;
+}
+#table-content input::placeholder {
+  color: var(--text-color-light);
+}
+
+.cell-null {
+  background-color: var(--main-color-dark);
+}
+
+.cell-error {
+  position: relative;
+  background-color: var(--error-color);
+}
+
+.cell-error-tooltip {
+  visibility: hidden;
+  width: calc(100% + 20px);
+  background-color: var(--main-color-dark);
+  color: var(--text-color-light);
+  text-align: center;
+  padding: 5px 0;
+  border-radius: 6px;
+
+  /* Position the tooltip text */
+  position: absolute;
+  z-index: 1;
+  bottom: 125%;
+  margin-left: -10px;
+  margin-right: -10px;
+
+  /* Fade in tooltip */
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.cell-error-tooltip::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: var(--main-color-dark) transparent transparent transparent;
+}
+
+.cell-error:hover .cell-error-tooltip {
+  visibility: visible;
+  opacity: 1;
 }
 
 
