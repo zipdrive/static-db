@@ -50,7 +50,7 @@ pub async fn dialog_create_table(app: AppHandle) -> Result<(), error::Error> {
     WebviewWindowBuilder::new(
         &app,
         format!("createTableWindow-{window_idx}"),
-        WebviewUrl::App("/src/dialogs/createTable.html".into()),
+        WebviewUrl::App("/src/frontend/dialogTable.html".into()),
     )
     .title("Create New Table")
     .inner_size(400.0, 150.0)
@@ -80,8 +80,8 @@ pub async fn dialog_create_table_column(app: AppHandle, table_oid: i64, column_o
     let window_idx = app.webview_windows().len();
     WebviewWindowBuilder::new(
         &app,
-        format!("createTableColumnWindow-{window_idx}"),
-        WebviewUrl::App(format!("/src/dialogs/createTableColumn.html?table_oid={table_oid}&column_ordering={column_ordering}").into()),
+        format!("tableColumnWindow-{window_idx}"),
+        WebviewUrl::App(format!("/src/frontend/dialogTableColumn.html?table_oid={table_oid}&column_ordering={column_ordering}").into()),
     )
     .title("Add New Column")
     .inner_size(400.0, 200.0)
@@ -98,6 +98,37 @@ pub fn create_table_column(app: AppHandle, table_oid: i64, column_name: String, 
     let column_oid = column::create(table_oid, &column_name, column_type, column_ordering, column_style, is_nullable, is_unique, is_primary_key)?;
     msg_update_table_data(&app, table_oid);
     return Ok(column_oid);
+}
+
+#[tauri::command]
+/// Pull up a dialog window for editing a table column.
+pub async fn dialog_edit_table_column(app: AppHandle, table_oid: i64, column_oid: i64) -> Result<(), error::Error> {    
+    let window_idx = app.webview_windows().len();
+    WebviewWindowBuilder::new(
+        &app,
+        format!("tableColumnWindow-{window_idx}"),
+        WebviewUrl::App(format!("/src/frontend/dialogTableColumn.html?table_oid={table_oid}&column_oid={column_oid}").into()),
+    )
+    .title("Edit Column")
+    .inner_size(400.0, 200.0)
+    .resizable(false)
+    .maximizable(false)
+    .build()?;
+    return Ok(());
+}
+
+#[tauri::command]
+/// Edit a column in a table.
+pub fn edit_table_column(app: AppHandle, table_oid: i64, column_oid: i64, column_name: &str, column_type: column::MetadataColumnType, column_style: &str, is_nullable: bool, is_unique: bool, is_primary_key: bool) -> Result<(), error::Error> {
+    column::edit(column_oid, column_name, column_type, column_style, is_nullable, is_unique, is_primary_key)?;
+    msg_update_table_data(&app, table_oid);
+    return Ok(());
+}
+
+#[tauri::command]
+/// Get the metadata for a particular column in a table.
+pub fn get_table_column(column_oid: i64) -> Result<Option<column::Metadata>, error::Error> {
+    return column::get_metadata(column_oid);
 }
 
 #[tauri::command]

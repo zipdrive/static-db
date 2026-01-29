@@ -3,11 +3,21 @@ import { Menu, MenuItem } from "@tauri-apps/api/menu";
 import { message } from "@tauri-apps/plugin-dialog";
 
 export type ColumnType = { primitive: string } 
-  | { singleSelectDropdown: number }
-  | { multiSelectDropdown: number }
-  | { reference: number } 
-  | { childObject: number } 
-  | { childTable: number };
+    | { singleSelectDropdown: number }
+    | { multiSelectDropdown: number }
+    | { reference: number } 
+    | { childObject: number } 
+    | { childTable: number };
+
+export type ColumnMetadata = {
+    oid: number, 
+    name: string,
+    columnStyle: string,
+    columnType: ColumnType,
+    isNullable: boolean,
+    isUnique: boolean,
+    isPrimaryKey: boolean,
+};
 
 export type ColumnCellInfo = { 
     columnOid: number, 

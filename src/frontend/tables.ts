@@ -2,7 +2,7 @@ import { Menu, MenuItem } from "@tauri-apps/api/menu";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import { listen } from '@tauri-apps/api/event';
 import { message } from "@tauri-apps/plugin-dialog";
-import { ColumnType, ColumnCellInfo, addTableCellToRow } from "./tableutils";
+import { ColumnMetadata, ColumnCellInfo, addTableCellToRow } from "./tableutils";
 
 async function updateTableListAsync() {
   // Remove the tables in the sidebar that were present before
@@ -134,16 +134,6 @@ export async function displayTableAsync(tableOid: number) {
   console.debug(`displayTable(${tableOid}) called.`);
   currentTableOid = tableOid;
 
-  type TableColumn = {
-    oid: number, 
-    name: string,
-    columnStyle: string,
-    columnType: ColumnType,
-    isNullable: boolean,
-    isUnique: boolean,
-    isPrimaryKey: boolean,
-  };
-
   type TableCell = { rowOid: number } | ColumnCellInfo;
 
   // Strip the former contents of the table
@@ -155,8 +145,8 @@ export async function displayTableAsync(tableOid: number) {
   let tableBodyNode: HTMLElement | null = document.querySelector('#table-content > tbody');
 
   // Set up a channel to populate the list of user-defined columns
-  let tableColumnList: TableColumn[] = []
-  const onReceiveColumn = new Channel<TableColumn>();
+  let tableColumnList: ColumnMetadata[] = []
+  const onReceiveColumn = new Channel<ColumnMetadata>();
   onReceiveColumn.onmessage = (column) => {
     // Add the column to the list of columns
     const columnOid = column.oid;
@@ -167,10 +157,8 @@ export async function displayTableAsync(tableOid: number) {
     if (tableHeaderNode != null) {
       let tableColNode: HTMLElement = document.createElement('col');
       tableColNode.setAttribute('span', '1');
-      tableColNode.classList.add(`table-column-${columnOid}`);
+      tableColNode.setAttribute('style', column.columnStyle);
       tableColgroupNode?.insertAdjacentElement('beforeend', tableColNode);
-
-      
 
       tableHeaderNode.innerText = column.name;
       tableHeaderRowNode?.insertAdjacentElement('beforeend', tableHeaderNode);

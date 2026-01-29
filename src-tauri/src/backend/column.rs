@@ -6,7 +6,7 @@ use tauri::ipc::Channel;
 use crate::backend::{column, db};
 use crate::util::error;
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
 pub enum Primitive {
     Any,        // Mode = 0 && OID = 0
     Boolean,    // Mode = 0 && OID = 1
@@ -20,7 +20,7 @@ pub enum Primitive {
     Image,      // Mode = 0 && OID = 9
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all="camelCase", rename_all_fields="camelCase")]
 pub enum MetadataColumnType {
     Primitive(Primitive),          // Mode = 0
@@ -252,6 +252,224 @@ pub fn create(table_oid: i64, column_name: &str, column_type: MetadataColumnType
     }
 }
 
+/// Edits a column's metadata and/or type.
+pub fn edit(column_oid: i64, column_name: &str, column_type: MetadataColumnType, column_style: &str, is_nullable: bool, is_unique: bool, is_primary_key: bool) -> Result<(), error::Error> {
+    let action = db::begin_db_action()?;
+    action.trans.query_one(
+        "SELECT
+            c.TYPE_OID,
+            t.MODE,
+            c.TABLE_OID
+        FROM METADATA_TABLE_COLUMN c
+        INNER JOIN METADATA_TABLE_COLUMN_TYPE t ON t.OID = c.TYPE_OID
+        WHERE c.OID = ?1;", 
+        params![column_oid], 
+        |row| {
+            let prior_column_type = MetadataColumnType::from_database(row.get(0)?, row.get(1)?);
+            let table_oid: i64 = row.get(2)?;
+
+            // Update the table's metadata
+            action.trans.execute(
+                "UPDATE METADATA_TABLE_COLUMN
+                SET
+                    NAME = ?1,
+                    TYPE_OID = ?2,
+                    COLUMN_CSS_STYLE = ?3,
+                    IS_NULLABLE = ?4,
+                    IS_UNIQUE = ?5,
+                    IS_PRIMARY_KEY = ?6
+                WHERE OID = ?7;", 
+                params![column_name, column_type.get_type_oid(), column_style, is_nullable, is_unique, is_primary_key, column_oid]
+            )?;
+
+            if prior_column_type != column_type {
+                // Attempt to transfer over data
+                let trans_table_created: bool;
+
+                // Start by deconstructing any tables and dropping any columns for the previous type
+                match prior_column_type {
+                    MetadataColumnType::Primitive(_)
+                    | MetadataColumnType::Reference(_)
+                    | MetadataColumnType::ChildObject(_)  => {
+                        // Create temporary table to hold prior data
+                        let create_temp_cmd = format!("CREATE TEMPORARY TABLE TRANS AS SELECT OID, COLUMN{column_oid} AS VALUE FROM TABLE{table_oid};");
+                        action.trans.execute(&create_temp_cmd, [])?;
+                        trans_table_created = true;
+
+                        // Delete the previous column from the data
+                        let alter_cmd = format!("ALTER TABLE TABLE{table_oid} DROP COLUMN COLUMN{column_oid};");
+                        action.trans.execute(&alter_cmd, [])?;
+                    },
+                    MetadataColumnType::SingleSelectDropdown(column_type_oid) => {
+                        // Create temporary table to hold prior data
+                        let create_temp_cmd = format!("CREATE TEMPORARY TABLE TRANS AS SELECT OID, COLUMN{column_oid} AS VALUE FROM TABLE{table_oid};");
+                        action.trans.execute(&create_temp_cmd, [])?;
+                        trans_table_created = true;
+
+                        // Drop the column from the data table
+                        let alter_cmd = format!("ALTER TABLE TABLE{table_oid} DROP COLUMN COLUMN{column_oid};");
+                        action.trans.execute(&alter_cmd, [])?;
+
+                        // Drop the dropdown values table
+                        let drop_cmd = format!("DROP TABLE TABLE{column_type_oid};");
+                        action.trans.execute(&drop_cmd, [])?;
+
+                        // Delete the dropdown type from the metadata
+                        action.trans.execute(
+                            "DELETE FROM METADATA_TABLE_COLUMN_TYPE WHERE OID = ?1", 
+                            params![column_type_oid]
+                        )?;
+                    },
+                    MetadataColumnType::MultiSelectDropdown(column_type_oid) => {
+                        // Do not create a temporary table
+                        trans_table_created = false;
+
+                        // Drop the relationship table
+                        let drop_relationship_cmd = format!("DROP TABLE TABLE{column_type_oid}_MULTISELECT;");
+                        action.trans.execute(&drop_relationship_cmd, [])?;
+
+                        // Drop the dropdown values table
+                        let drop_cmd = format!("DROP TABLE TABLE{column_type_oid};");
+                        action.trans.execute(&drop_cmd, [])?;
+
+                        // Delete the type from the metadata
+                        action.trans.execute(
+                            "DELETE FROM METADATA_TABLE_COLUMN_TYPE WHERE OID = ?1", 
+                            params![column_type_oid]
+                        )?;
+                    },
+                    MetadataColumnType::ChildTable(column_type_oid) => {
+                        // Do not create a temporary table
+                        trans_table_created = false;
+
+                        // Drop the surrogate view of the child table
+                        let drop_view_cmd = format!("DROP VIEW TABLE{column_type_oid}_SURROGATE;");
+                        action.trans.execute(&drop_view_cmd, [])?;
+
+                        // Drop the child table
+                        let drop_cmd = format!("DROP TABLE TABLE{column_type_oid};");
+                        action.trans.execute(&drop_cmd, [])?;
+
+                        // Delete the child table from the metadata
+                        action.trans.execute(
+                            "DELETE FROM METADATA_TABLE WHERE OID = ?1", 
+                            params![column_type_oid]
+                        )?;
+
+                        // Delete the type from the metadata
+                        action.trans.execute(
+                            "DELETE FROM METADATA_TABLE_COLUMN_TYPE WHERE OID = ?1", 
+                            params![column_type_oid]
+                        )?;
+                    }
+                }
+
+                // Then construct any tables/columns for the new type, and upload data if applicable
+                match column_type {
+                    MetadataColumnType::Primitive(prim) => {
+                        // Add the column to the table
+                        let sqlite_type = match prim {
+                            Primitive::Any => "ANY",
+                            Primitive::Boolean => "TINYINT",
+                            Primitive::Integer => "INTEGER",
+                            Primitive::Number => "FLOAT",
+                            Primitive::Date => "DATE",
+                            Primitive::Timestamp => "TIMESTAMP",
+                            Primitive::Text | Primitive::JSON => "TEXT",
+                            Primitive::File | Primitive::Image => "BLOB",
+                        };
+                        let alter_table_cmd = format!("ALTER TABLE TABLE{table_oid} ADD COLUMN COLUMN{column_oid} {sqlite_type};");
+                        action.trans.execute(&alter_table_cmd, [])?;
+                    },
+                    MetadataColumnType::SingleSelectDropdown(_) => {
+                        // Create the column type, use that as the OID for the type
+                        action.trans.execute(
+                            "INSERT INTO METADATA_TABLE_COLUMN_TYPE (MODE) VALUES (?1);", 
+                            params![column_type.get_type_mode()]
+                        )?;
+                        let column_type_oid = action.trans.last_insert_rowid();
+
+                        // Update the table's metadata with the newly-constructed type
+                        action.trans.execute(
+                            "UPDATE METADATA_TABLE_COLUMN
+                            SET
+                                TYPE_OID = ?1
+                            WHERE OID = ?2;", 
+                            params![column_type_oid, column_oid]
+                        )?;
+
+                        // Create the data table
+                        let create_table_cmd = format!("CREATE TABLE TABLE{column_type_oid} (VALUE TEXT NOT NULL, PRIMARY KEY (VALUE) ON CONFLICT IGNORE) WITHOUT ROWID;");
+                        action.trans.execute(&create_table_cmd, [])?;
+
+                        // Add the column to the table
+                        let alter_table_cmd = format!("ALTER TABLE TABLE{table_oid} ADD COLUMN COLUMN{column_oid} TEXT REFERENCES TABLE{column_type_oid} (VALUE) ON UPDATE CASCADE ON DELETE SET NULL;");
+                        action.trans.execute(&alter_table_cmd, [])?;
+                    },
+                    MetadataColumnType::MultiSelectDropdown(_) => {
+                        // Create the column type, use that as the OID for the type
+                        action.trans.execute(
+                            "INSERT INTO METADATA_TABLE_COLUMN_TYPE (MODE) VALUES (?1);", 
+                            params![column_type.get_type_mode()]
+                        )?;
+                        let column_type_oid = action.trans.last_insert_rowid();
+
+                        // Update the table's metadata with the newly-constructed type
+                        action.trans.execute(
+                            "UPDATE METADATA_TABLE_COLUMN
+                            SET
+                                TYPE_OID = ?1
+                            WHERE OID = ?2;", 
+                            params![column_type_oid, column_oid]
+                        )?;
+
+                        // Create the data table
+                        let create_table_cmd = format!("CREATE TABLE TABLE{column_type_oid} (VALUE TEXT NOT NULL, PRIMARY KEY (VALUE) ON CONFLICT IGNORE) WITHOUT ROWID;");
+                        action.trans.execute(&create_table_cmd, [])?;
+
+                        // Create the *-to-* relationship table
+                        let create_relationship_cmd = format!("CREATE TABLE TABLE{column_type_oid}_MULTISELECT (OID INTEGER REFERENCES TABLE{table_oid} (OID) ON UPDATE CASCADE ON DELETE CASCADE, VALUE TEXT REFERENCES TABLE{column_type_oid} (VALUE) ON UPDATE CASCADE ON DELETE CASCADE, PRIMARY KEY (OID, VALUE));");
+                        action.trans.execute(&create_relationship_cmd, [])?;
+                    },
+                    MetadataColumnType::Reference(referenced_table_oid)
+                    | MetadataColumnType::ChildObject(referenced_table_oid) => {
+                        // Add the column to the table
+                        let alter_table_cmd = format!("ALTER TABLE TABLE{table_oid} ADD COLUMN COLUMN{column_oid} INTEGER REFERENCES TABLE{referenced_table_oid} (OID) ON UPDATE CASCADE ON DELETE SET DEFAULT;");
+                        action.trans.execute(&alter_table_cmd, [])?;
+                    },
+                    MetadataColumnType::ChildTable(_) => {
+                        // Create the column type, use that as the OID for the type
+                        action.trans.execute(
+                            "INSERT INTO METADATA_TABLE_COLUMN_TYPE (MODE) VALUES (?1);", 
+                            params![column_type.get_type_mode()]
+                        )?;
+                        let column_type_oid = action.trans.last_insert_rowid();
+
+                        // Update the table's metadata with the newly-constructed type
+                        action.trans.execute(
+                            "UPDATE METADATA_TABLE_COLUMN
+                            SET
+                                TYPE_OID = ?1
+                            WHERE OID = ?2;", 
+                            params![column_type_oid, column_oid]
+                        )?;
+
+                        // Create a table to hold data for the child table for the type
+                        let create_table_cmd = format!("CREATE TABLE TABLE{column_type_oid} (OID INTEGER PRIMARY KEY, _PARENT_OID_ INTEGER NOT NULL REFERENCES TABLE{table_oid} (OID));");
+                        action.trans.execute(&create_table_cmd, [])?;
+
+                        // Create a surrogate view for the child table
+                        let create_view_cmd = format!("CREATE VIEW TABLE{column_type_oid}_SURROGATE (OID, DISPLAY_VALUE) AS SELECT OID, OID FROM TABLE{column_type_oid};");
+                        action.trans.execute(&create_view_cmd, [])?;
+                    }
+                }
+            }
+            return Ok(());
+        }
+    ).optional()?;
+    return Ok(());
+}
+
 /// Delete the column with the given OID.
 pub fn delete(column_oid: i64) -> Result<(), error::Error> {
     let action = db::begin_db_action()?;
@@ -358,6 +576,39 @@ pub fn delete(column_oid: i64) -> Result<(), error::Error> {
         }
     ).optional()?;
     return Ok(());
+}
+
+/// Get the metadata for a particular column.
+pub fn get_metadata(column_oid: i64) -> Result<Option<Metadata>, error::Error> {
+    let action = db::begin_readonly_db_action()?;
+
+    return Ok(action.trans.query_one(
+        "SELECT 
+                c.OID, 
+                c.NAME, 
+                c.COLUMN_CSS_STYLE,
+                c.TYPE_OID, 
+                t.MODE,
+                c.IS_NULLABLE,
+                c.IS_UNIQUE,
+                c.IS_PRIMARY_KEY
+            FROM METADATA_TABLE_COLUMN c
+            INNER JOIN METADATA_TABLE_COLUMN_TYPE t ON t.OID = c.TYPE_OID
+            WHERE c.OID = ?1 
+            ORDER BY c.COLUMN_ORDERING ASC;",
+         params![column_oid], 
+        |row| {
+            return Ok(Metadata {
+                oid: row.get(0)?,
+                name: row.get(1)?,
+                column_style: row.get(2)?,
+                column_type: MetadataColumnType::from_database(row.get(3)?, row.get(4)?),
+                is_nullable: row.get(5)?,
+                is_unique: row.get(6)?,
+                is_primary_key: row.get(7)?,
+            });
+        }
+    ).optional()?);
 }
 
 /// Send a metadata list of columns.
