@@ -1,30 +1,7 @@
-import { Channel, invoke } from "@tauri-apps/api/core";
 import { Menu, MenuItem } from "@tauri-apps/api/menu";
 import { message } from "@tauri-apps/plugin-dialog";
+import { TableColumnCell, executeAsync } from './backendutils';
 
-export type ColumnType = { primitive: string } 
-    | { singleSelectDropdown: number }
-    | { multiSelectDropdown: number }
-    | { reference: number } 
-    | { childObject: number } 
-    | { childTable: number };
-
-export type ColumnMetadata = {
-    oid: number, 
-    name: string,
-    columnStyle: string,
-    columnType: ColumnType,
-    isNullable: boolean,
-    isUnique: boolean,
-    isPrimaryKey: boolean,
-};
-
-export type ColumnCellInfo = { 
-    columnOid: number, 
-    columnType: ColumnType, 
-    displayValue: string | null,
-    failedValidations: { description: string }[]
-};
 
 /**
  * Adds a cell representing a table cell to the end of a row.
@@ -33,9 +10,8 @@ export type ColumnCellInfo = {
  * @param rowOid The OID of the row of the table that the cell belongs to.
  * @param cell Information about the cell itself.
  */
-export function addTableCellToRow(rowNode: HTMLTableRowElement, tableOid: number, rowOid: number, cell: ColumnCellInfo) {
+export function addTableColumnCellToRow(rowNode: HTMLTableRowElement, tableOid: number, rowOid: number, cell: TableColumnCell) {
   const columnOid = cell.columnOid;
-  console.debug(cell);
 
   // Insert cell node
   let tableCellNode: HTMLTableCellElement = document.createElement('td');
@@ -49,21 +25,27 @@ export function addTableCellToRow(rowNode: HTMLTableRowElement, tableOid: number
       case 'Integer':
       case 'Date':
       case 'Timestamp': {
-        // Create an input node
-        let inputNode: HTMLTextAreaElement = document.createElement('textarea');
+        // Set cell to be editable
+        let editableDivNode: HTMLDivElement = document.createElement('div');
+        editableDivNode.contentEditable = 'true';
         if (cell.displayValue) {
-          inputNode.value = cell.displayValue;
+          editableDivNode.innerText = cell.displayValue;
         } else {
-          inputNode.placeholder = '— NULL —';
+          editableDivNode.setAttribute('placeholder', '— NULL —');
         }
 
         // Set up an event listener for when the value is changed
-        inputNode.addEventListener('change', async (_) => {
-          await invoke('try_update_primitive_value', {
-            tableOid: tableOid,
-            rowOid: rowOid,
-            columnOid: columnOid,
-            newPrimitiveValue: inputNode.value
+        editableDivNode.addEventListener('focusout', async (_) => {
+          const newPrimitiveValue = editableDivNode.innerText.trimEnd();
+
+          await executeAsync({
+            invokeAction: 'try_update_primitive_value',
+            invokeParams: {
+              tableOid: tableOid,
+              rowOid: rowOid,
+              columnOid: columnOid,
+              newPrimitiveValue: newPrimitiveValue == '' ? null : newPrimitiveValue
+            }
           })
           .catch(async e => {
             await message(e, {
@@ -73,8 +55,8 @@ export function addTableCellToRow(rowNode: HTMLTableRowElement, tableOid: number
           });
         });
 
-        // Add the input node to the cell
-        tableCellNode.insertAdjacentElement('beforeend', inputNode);
+        // Add the div to the cell
+        tableCellNode.insertAdjacentElement('beforeend', editableDivNode);
         break;
       }
       case 'Boolean': {

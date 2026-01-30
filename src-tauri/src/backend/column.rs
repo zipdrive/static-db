@@ -20,6 +20,22 @@ pub enum Primitive {
     Image,      // Mode = 0 && OID = 9
 }
 
+impl Primitive {
+    /// Gets the corresponding type mode of a column type.
+    fn get_sqlite_type(&self) -> &'static str {
+        return match self {
+            Self::Any => "ANY",
+            Self::Boolean => "TINYINT",
+            Self::Integer => "INTEGER",
+            Self::Number => "FLOAT",
+            Self::Date => "DATE",
+            Self::Timestamp => "TIMESTAMP",
+            Self::Text | Self::JSON => "TEXT",
+            Self::File | Self::Image => "BLOB",
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone, PartialEq)]
 #[serde(rename_all="camelCase", rename_all_fields="camelCase")]
 pub enum MetadataColumnType {
@@ -133,16 +149,7 @@ pub fn create(table_oid: i64, column_name: &str, column_type: MetadataColumnType
             let column_oid = action.trans.last_insert_rowid();
             
             // Add the column to the table
-            let sqlite_type = match prim {
-                Primitive::Any => "ANY",
-                Primitive::Boolean => "TINYINT",
-                Primitive::Integer => "INTEGER",
-                Primitive::Number => "FLOAT",
-                Primitive::Date => "DATE",
-                Primitive::Timestamp => "TIMESTAMP",
-                Primitive::Text | Primitive::JSON => "TEXT",
-                Primitive::File | Primitive::Image => "BLOB",
-            };
+            let sqlite_type = prim.get_sqlite_type();
             let alter_table_cmd = format!("ALTER TABLE TABLE{table_oid} ADD COLUMN COLUMN{column_oid} {sqlite_type};");
             action.trans.execute(&alter_table_cmd, [])?;
 
@@ -364,22 +371,25 @@ pub fn edit(column_oid: i64, column_name: &str, column_type: MetadataColumnType,
                     }
                 }
 
+
                 // Then construct any tables/columns for the new type, and upload data if applicable
                 match column_type {
                     MetadataColumnType::Primitive(prim) => {
                         // Add the column to the table
-                        let sqlite_type = match prim {
-                            Primitive::Any => "ANY",
-                            Primitive::Boolean => "TINYINT",
-                            Primitive::Integer => "INTEGER",
-                            Primitive::Number => "FLOAT",
-                            Primitive::Date => "DATE",
-                            Primitive::Timestamp => "TIMESTAMP",
-                            Primitive::Text | Primitive::JSON => "TEXT",
-                            Primitive::File | Primitive::Image => "BLOB",
-                        };
+                        let sqlite_type = prim.get_sqlite_type();
                         let alter_table_cmd = format!("ALTER TABLE TABLE{table_oid} ADD COLUMN COLUMN{column_oid} {sqlite_type};");
                         action.trans.execute(&alter_table_cmd, [])?;
+
+                        // Copy over previous data
+                        if trans_table_created {
+                            let copy_cmd = format!("
+                            UPDATE OR IGNORE main.TABLE{table_oid} AS t
+                            SET COLUMN{column_oid} = CAST(trans.VALUE AS {sqlite_type})
+                            FROM temp.TRANS AS trans
+                            WHERE t.OID = trans.OID;
+                            ");
+                            action.trans.execute(&copy_cmd, [])?;
+                        }
                     },
                     MetadataColumnType::SingleSelectDropdown(_) => {
                         // Create the column type, use that as the OID for the type
@@ -405,6 +415,17 @@ pub fn edit(column_oid: i64, column_name: &str, column_type: MetadataColumnType,
                         // Add the column to the table
                         let alter_table_cmd = format!("ALTER TABLE TABLE{table_oid} ADD COLUMN COLUMN{column_oid} TEXT REFERENCES TABLE{column_type_oid} (VALUE) ON UPDATE CASCADE ON DELETE SET NULL;");
                         action.trans.execute(&alter_table_cmd, [])?;
+
+                        // Copy over previous data
+                        if trans_table_created {
+                            let copy_cmd = format!("
+                            UPDATE OR IGNORE main.TABLE{table_oid} AS t
+                            SET COLUMN{column_oid} = CAST(trans.VALUE AS TEXT)
+                            FROM temp.TRANS AS trans
+                            WHERE t.OID = trans.OID;
+                            ");
+                            action.trans.execute(&copy_cmd, [])?;
+                        }
                     },
                     MetadataColumnType::MultiSelectDropdown(_) => {
                         // Create the column type, use that as the OID for the type
@@ -436,6 +457,17 @@ pub fn edit(column_oid: i64, column_name: &str, column_type: MetadataColumnType,
                         // Add the column to the table
                         let alter_table_cmd = format!("ALTER TABLE TABLE{table_oid} ADD COLUMN COLUMN{column_oid} INTEGER REFERENCES TABLE{referenced_table_oid} (OID) ON UPDATE CASCADE ON DELETE SET DEFAULT;");
                         action.trans.execute(&alter_table_cmd, [])?;
+
+                        // Copy over previous data
+                        if trans_table_created {
+                            let copy_cmd = format!("
+                            UPDATE OR IGNORE main.TABLE{table_oid} AS t
+                            SET COLUMN{column_oid} = CAST(trans.VALUE AS INTEGER)
+                            FROM temp.TRANS AS trans
+                            WHERE t.OID = trans.OID;
+                            ");
+                            action.trans.execute(&copy_cmd, [])?;
+                        }
                     },
                     MetadataColumnType::ChildTable(_) => {
                         // Create the column type, use that as the OID for the type
@@ -462,6 +494,11 @@ pub fn edit(column_oid: i64, column_name: &str, column_type: MetadataColumnType,
                         let create_view_cmd = format!("CREATE VIEW TABLE{column_type_oid}_SURROGATE (OID, DISPLAY_VALUE) AS SELECT OID, OID FROM TABLE{column_type_oid};");
                         action.trans.execute(&create_view_cmd, [])?;
                     }
+                }
+
+                // Drop temporary table, if one was created
+                if trans_table_created {
+                    action.trans.execute("DROP TABLE temp.TRANS;", [])?;
                 }
             }
             return Ok(());

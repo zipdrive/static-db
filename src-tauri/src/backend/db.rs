@@ -129,10 +129,13 @@ pub fn init<P: AsRef<Path>>(path: P) -> Result<(), error::Error> {
         match &mut GLOBAL_CONNECTION {
             Some(conn) => {
                 // Do commands to set up the necessary pragmas for the entire connection
-                conn.execute_batch("PRAGMA foreign_keys = ON;PRAGMA journal_mode = WAL;PRAGMA database_list;")?;
+                conn.execute_batch("
+                PRAGMA foreign_keys = ON;
+                --PRAGMA journal_mode = WAL;
+                PRAGMA database_list;")?;
 
                 // Start the transaction that will serve as the undo stack
-                GLOBAL_TRANSACTION = Some(conn.transaction_with_behavior(TransactionBehavior::Immediate)?);
+                GLOBAL_TRANSACTION = Some(conn.transaction_with_behavior(TransactionBehavior::Deferred)?);
             },
             None => {
                 return Err(error::Error::AdhocError("GLOBAL_CONNECTION found to be None immediately following initialization."));

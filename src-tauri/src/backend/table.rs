@@ -20,7 +20,7 @@ pub fn create(name: String) -> Result<i64, error::Error> {
         "INSERT INTO METADATA_TABLE (OID, NAME) VALUES (?1, ?2);",
         params![table_oid, &name]
     )?;
-    let create_table_cmd: String = format!("CREATE TABLE TABLE{} (OID INTEGER PRIMARY KEY);", table_oid);
+    let create_table_cmd: String = format!("CREATE TABLE TABLE{} (OID INTEGER PRIMARY KEY) STRICT;", table_oid);
     action.trans.execute(&create_table_cmd, [])?;
     let create_view_cmd = format!("CREATE VIEW TABLE{table_oid}_SURROGATE (OID, DISPLAY_VALUE) AS SELECT OID, OID FROM TABLE{table_oid};");
     action.trans.execute(&create_view_cmd, [])?;

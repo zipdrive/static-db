@@ -9,6 +9,7 @@
   --text-color-link-hover: #535bf2;
   --accent-color: #396cd8;
   --error-color: #e996a0;
+  --text-color-error: #800707;
 
   font-family: Inter, Avenir, Helvetica, Arial, sans-serif;
   font-size: 16px;
@@ -60,12 +61,13 @@
   justify-content: center;
 }
 
-a {
+a, .clickable-text {
   font-weight: 500;
   color: var(--text-color-link);
   text-decoration: inherit;
+  cursor: pointer;
 }
-a:hover {
+a:hover, .clickable-text:hover {
   color: var(--text-color-link-hover);
 }
 
@@ -219,13 +221,14 @@ body {
 #table-content > tbody > tr {
   background-color: var(--main-color-neutral);
 }
-#table-content > tbody > tr:nth-child(even), #table-content th, #table-content > tfoot > tr {
+#table-content > tbody > tr:nth-child(even), #table-content > thead > tr, #table-content > tfoot > tr {
   background-color: var(--main-color-light);
 }
 #table-content th, #table-content td {
   border: var(--main-color-dark) 1px solid;
 }
 #table-content td {
+  position: relative;
   padding: 0;
 }
 #table-content th {
@@ -236,7 +239,7 @@ body {
   cursor: pointer;
   color: var(--text-color-link);
   border: none;
-  background-color: unset;
+  background-color: var(--main-color-neutral);
   white-space: nowrap;
   font-weight: normal;
 }
@@ -251,19 +254,22 @@ body {
   color: var(--text-color-link-hover);
 }
 
-#table-content input, #table-content textarea {
+#table-content [contenteditable] {
   padding: 2px 6px;
-  min-width: 100%;
-  field-sizing: content;
-  font-size: inherit;
-  font-family: inherit;
-  background-color: transparent;
-  border: none;
-  box-shadow: none;
-  resize: none;
-}
-#table-content input::placeholder {
-  color: var(--text-color-light);
+
+  &[placeholder]:empty::before {
+    content: attr(placeholder);
+    z-index: 9;
+    line-height: 1.7;
+    color: var(--text-color-light);
+    text-align: center;
+    word-break: break-all;
+    user-select: none;
+  }
+
+  &[placeholder]:empty:focus::before {
+    content: "";
+  }
 }
 
 .cell-null {
@@ -273,6 +279,10 @@ body {
 .cell-error {
   position: relative;
   background-color: var(--error-color);
+  color: var(--text-color-error);
+}
+.cell-error [placeholder]:empty::before {
+  color: var(--text-color-error) !important;
 }
 
 .cell-error-tooltip {

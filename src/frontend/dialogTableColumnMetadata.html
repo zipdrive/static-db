@@ -4,18 +4,18 @@
     <meta charset="UTF-8" />
     <link rel="stylesheet" href="/src/styles.css" />
     <title>Create New Column</title>
-    <script type="module" src="createTableColumn.ts" defer></script>
+    <script type="module" src="dialogTableColumnMetadata.ts" defer></script>
   </head>
 
   <body>
     <form class="dialog-form">
         <table class="dialog-form-table">
             <tbody>
-                <tr class="parameter parameter-text parameter-bool parameter-int parameter-number parameter-date parameter-timestamp parameter-childTable parameter-object parameter-reference parameter-file parameter-image parameter-json">
+                <tr class="parameter parameter-Text parameter-Boolean parameter-Integer parameter-Number parameter-Date parameter-Timestamp parameter-ChildTable parameter-Object parameter-Reference parameter-File parameter-Image parameter-JSON">
                     <td><label for="column-name">Column Name:</label></td>
                     <td><input name="column-name" id="column-name" type="text" /></td>
                 </tr>
-                <tr class="parameter parameter-text parameter-bool parameter-int parameter-number parameter-date parameter-timestamp parameter-childTable parameter-object parameter-reference parameter-file parameter-image parameter-json">
+                <tr class="parameter parameter-Text parameter-Boolean parameter-Integer parameter-Number parameter-Date parameter-Timestamp parameter-ChildTable parameter-Object parameter-Reference parameter-File parameter-Image parameter-JSON">
                     <td><label for="column-type">Column Type:</label></td>
                     <td>
                         <select name="column-type" id="column-type">
@@ -42,45 +42,45 @@
                         <input name="column-dropdown-values" id="column-dropdown-values" type="text" />
                     </td>
                 </tr>
-                <tr class="parameter parameter-object">
+                <tr class="parameter parameter-Object">
                     <td><label for="column-type-oid-object">Data Type:</label></td>
                     <td>
                         <select name="column-type-oid-object" id="column-type-oid-object">
                         </select>
                     </td>
                 </tr>
-                <tr class="parameter parameter-reference">
+                <tr class="parameter parameter-Reference">
                     <td><label for="column-type-oid-reference">Referenced Table:</label></td>
                     <td>
                         <select name="column-type-oid-reference" id="column-type-oid-reference">
                         </select>
                     </td>
                 </tr>
-                <tr class="parameter parameter-text parameter-bool parameter-int parameter-number parameter-date parameter-timestamp parameter-childTable parameter-object parameter-reference parameter-file parameter-image parameter-json">
+                <tr class="parameter parameter-Text parameter-Boolean parameter-Integer parameter-Number parameter-Date parameter-Timestamp parameter-ChildTable parameter-Object parameter-Reference parameter-File parameter-Image parameter-JSON">
                     <td><label for="column-is-nullable">Is Nullable?</label></td>
                     <td>
-                        <input name="column-is-nullable" id="column-is-nullable" type="checkbox" />
+                        <input name="column-is-nullable" id="column-is-nullable" type="checkbox" checked />
                     </td>
                 </tr>
-                <tr class="parameter parameter-text parameter-int parameter-number parameter-date parameter-timestamp parameter-reference parameter-json">
+                <tr class="parameter parameter-Text parameter-Integer parameter-Number parameter-Date parameter-Timestamp parameter-Reference parameter-JSON">
                     <td><label for="column-is-unique">Is Unique?</label></td>
                     <td>
                         <input name="column-is-unique" id="column-is-unique" type="checkbox" />
                     </td>
                 </tr>
-                <tr class="parameter parameter-text parameter-bool parameter-int parameter-number parameter-date parameter-timestamp parameter-reference parameter-json">
+                <tr class="parameter parameter-Text parameter-Boolean parameter-Integer parameter-Number parameter-Date parameter-Timestamp parameter-Reference parameter-JSON">
                     <td><label for="column-is-primary-key">Part of Table's Index?</label></td>
                     <td>
                         <input name="column-is-primary-key" id="column-is-primary-key" type="checkbox" />
                     </td>
                 </tr>
                 <tr>
-                    <td colspan="2">Advanced</td>
+                    <td colspan="2" id="advanced-parameter-toggle-button" class="clickable-text">Advanced</td>
                 </tr>
-                <tr class="parameter parameter-advanced parameter-text parameter-bool parameter-int parameter-number parameter-date parameter-timestamp parameter-childTable parameter-object parameter-reference parameter-file parameter-image parameter-json">
+                <tr class="parameter parameter-advanced parameter-Text parameter-Boolean parameter-Integer parameter-Number parameter-Date parameter-Timestamp parameter-ChildTable parameter-Object parameter-Reference parameter-File parameter-Image parameter-JSON">
                     <td><label for="column-style">Column Style:</label></td>
                     <td>
-                        <textarea name="column-style" id="column-style">width: 180;</textarea>
+                        <textarea name="column-style" id="column-style">width: 180px;</textarea>
                     </td>
                 </tr>
             </tbody>

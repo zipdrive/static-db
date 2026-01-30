@@ -5,7 +5,7 @@ mod data;
 use tauri::menu::{ContextMenu, Menu, MenuItem, MenuBuilder};
 use tauri::{AppHandle, WebviewWindowBuilder, WebviewUrl, Emitter, Size, PhysicalSize, Manager};
 use tauri_plugin_dialog::{DialogExt, MessageDialogKind};
-use tauri::ipc::Channel;
+use tauri::ipc::{Channel, InvokeError};
 use crate::util::error;
 
 #[tauri::command]
@@ -49,8 +49,8 @@ pub async fn dialog_create_table(app: AppHandle) -> Result<(), error::Error> {
     let window_idx = app.webview_windows().len();
     WebviewWindowBuilder::new(
         &app,
-        format!("createTableWindow-{window_idx}"),
-        WebviewUrl::App("/src/frontend/dialogTable.html".into()),
+        format!("tableMetadataWindow-{window_idx}"),
+        WebviewUrl::App("/src/frontend/dialogTableMetadata.html".into()),
     )
     .title("Create New Table")
     .inner_size(400.0, 150.0)
@@ -61,10 +61,21 @@ pub async fn dialog_create_table(app: AppHandle) -> Result<(), error::Error> {
 
 #[tauri::command]
 /// Create a table.
-pub fn create_table(app: AppHandle, name: String) -> Result<i64, error::Error> {
-    let table_oid: i64 = table::create(name)?;
-    msg_update_table_list(&app);
-    return Ok(table_oid);
+pub async fn create_table(app: AppHandle, name: String) {
+    match table::create(name) {
+        Err(e) => {
+            process_action_error(&app, &e).await;
+            app.dialog()
+                .message(e)
+                .title("An error occurred while attempting to create new table.")
+                .kind(MessageDialogKind::Error)
+                .blocking_show();
+        },
+        Ok(table_oid) => {
+            msg_update_table_list(&app);
+            msg_update_table_data(&app, table_oid);
+        }
+    }
 }
 
 #[tauri::command]
@@ -80,8 +91,8 @@ pub async fn dialog_create_table_column(app: AppHandle, table_oid: i64, column_o
     let window_idx = app.webview_windows().len();
     WebviewWindowBuilder::new(
         &app,
-        format!("tableColumnWindow-{window_idx}"),
-        WebviewUrl::App(format!("/src/frontend/dialogTableColumn.html?table_oid={table_oid}&column_ordering={column_ordering}").into()),
+        format!("tableColumnMetadataWindow-{window_idx}"),
+        WebviewUrl::App(format!("/src/frontend/dialogTableColumnMetadata.html?table_oid={table_oid}&column_ordering={column_ordering}").into()),
     )
     .title("Add New Column")
     .inner_size(400.0, 200.0)
@@ -93,11 +104,21 @@ pub async fn dialog_create_table_column(app: AppHandle, table_oid: i64, column_o
 
 #[tauri::command]
 /// Create a new column in a table.
-pub fn create_table_column(app: AppHandle, table_oid: i64, column_name: String, column_type: column::MetadataColumnType, column_ordering: i64, column_style: &str, is_nullable: bool, is_unique: bool, is_primary_key: bool) -> Result<i64, error::Error> {
+pub async fn create_table_column(app: AppHandle, table_oid: i64, column_name: String, column_type: column::MetadataColumnType, column_ordering: i64, column_style: String, is_nullable: bool, is_unique: bool, is_primary_key: bool) {
     // Wrapper for column::create
-    let column_oid = column::create(table_oid, &column_name, column_type, column_ordering, column_style, is_nullable, is_unique, is_primary_key)?;
-    msg_update_table_data(&app, table_oid);
-    return Ok(column_oid);
+    match column::create(table_oid, &column_name, column_type, column_ordering, &column_style, is_nullable, is_unique, is_primary_key) {
+        Err(e) => {
+            process_action_error(&app, &e).await;
+            app.dialog()
+                .message(e)
+                .title("An error occurred while attempting to create column in table.")
+                .kind(MessageDialogKind::Error)
+                .blocking_show();
+        },
+        Ok(column_oid) => {
+            msg_update_table_data(&app, table_oid);
+        }
+    }
 }
 
 #[tauri::command]
@@ -106,8 +127,8 @@ pub async fn dialog_edit_table_column(app: AppHandle, table_oid: i64, column_oid
     let window_idx = app.webview_windows().len();
     WebviewWindowBuilder::new(
         &app,
-        format!("tableColumnWindow-{window_idx}"),
-        WebviewUrl::App(format!("/src/frontend/dialogTableColumn.html?table_oid={table_oid}&column_oid={column_oid}").into()),
+        format!("tableColumnMetadataWindow-{window_idx}"),
+        WebviewUrl::App(format!("/src/frontend/dialogTableColumnMetadata.html?table_oid={table_oid}&column_oid={column_oid}").into()),
     )
     .title("Edit Column")
     .inner_size(400.0, 200.0)
@@ -119,10 +140,38 @@ pub async fn dialog_edit_table_column(app: AppHandle, table_oid: i64, column_oid
 
 #[tauri::command]
 /// Edit a column in a table.
-pub fn edit_table_column(app: AppHandle, table_oid: i64, column_oid: i64, column_name: &str, column_type: column::MetadataColumnType, column_style: &str, is_nullable: bool, is_unique: bool, is_primary_key: bool) -> Result<(), error::Error> {
-    column::edit(column_oid, column_name, column_type, column_style, is_nullable, is_unique, is_primary_key)?;
-    msg_update_table_data(&app, table_oid);
-    return Ok(());
+pub async fn edit_table_column(app: AppHandle, table_oid: i64, column_oid: i64, column_name: String, column_type: column::MetadataColumnType, column_style: String, is_nullable: bool, is_unique: bool, is_primary_key: bool) {
+    match column::edit(column_oid, &column_name, column_type, &column_style, is_nullable, is_unique, is_primary_key) {
+        Err(e) => {
+            process_action_error(&app, &e).await;
+            app.dialog()
+                .message(e)
+                .title("An error occurred while attempting to make edits to column metadata.")
+                .kind(MessageDialogKind::Error)
+                .blocking_show();
+        },
+        Ok(_) => {
+            msg_update_table_data(&app, table_oid);
+        }
+    }
+}
+
+#[tauri::command]
+/// Delete a column from a table.
+pub async fn delete_table_column(app: AppHandle, table_oid: i64, column_oid: i64) {
+    match column::delete(column_oid) {
+        Err(e) => {
+            process_action_error(&app, &e).await;
+            app.dialog()
+                .message(e)
+                .title("An error occurred while attempting to delete column from table.")
+                .kind(MessageDialogKind::Error)
+                .blocking_show();
+        },
+        Ok(_) => {
+            msg_update_table_data(&app, table_oid);
+        }
+    }
 }
 
 #[tauri::command]
@@ -140,34 +189,73 @@ pub fn get_table_column_list(table_oid: i64, column_channel: Channel<column::Met
 
 #[tauri::command]
 /// Insert a blank row with default OID into data table.
-pub fn push_row(app: AppHandle, table_oid: i64) -> Result<i64, error::Error> {
-    let row_oid = data::push(table_oid)?;
-    msg_update_table_row(&app, table_oid, row_oid);
-    return Ok(row_oid);
+pub async fn push_row(app: AppHandle, table_oid: i64) {
+    match data::push(table_oid) {
+        Err(e) => {
+            process_action_error(&app, &e).await;
+            app.dialog()
+                .message(e)
+                .title("An error occurred while attempting to add row to table.")
+                .kind(MessageDialogKind::Error)
+                .blocking_show();
+        },
+        Ok(row_oid) => {
+            msg_update_table_row(&app, table_oid, row_oid);
+        }
+    }
 }
 
 #[tauri::command]
 /// Insert a blank row and update OIDs such that the inserted row appears before the row with the given OID, but after any existing row with OID less than it.
-pub fn insert_row(app: AppHandle, table_oid: i64, row_oid: i64) -> Result<i64, error::Error> {
-    let row_oid = data::insert(table_oid, row_oid)?;
-    msg_update_table_data(&app, table_oid);
-    return Ok(row_oid);
+pub async fn insert_row(app: AppHandle, table_oid: i64, row_oid: i64) {
+    match data::insert(table_oid, row_oid) {
+        Err(e) => {
+            process_action_error(&app, &e).await;
+            app.dialog()
+                .message(e)
+                .title("An error occurred while attempting to insert row into table.")
+                .kind(MessageDialogKind::Error)
+                .blocking_show();
+        },
+        Ok(row_oid) => {
+            msg_update_table_data(&app, table_oid);
+        }
+    }
 }
 
 #[tauri::command]
 /// Deletes the row with the given OID.
-pub fn delete_row(app: AppHandle, table_oid: i64, row_oid: i64) -> Result<i64, error::Error> {
-    data::delete(table_oid, row_oid)?;
-    msg_update_table_row(&app, table_oid, row_oid);
-    return Ok(row_oid);
+pub async fn delete_row(app: AppHandle, table_oid: i64, row_oid: i64) {
+    match data::delete(table_oid, row_oid) {
+        Err(e) => {
+            process_action_error(&app, &e).await;
+            app.dialog()
+                .message(e)
+                .title("An error occurred while attempting to delete row from table.")
+                .kind(MessageDialogKind::Error)
+                .blocking_show();
+        },
+        Ok(_) => {
+            msg_update_table_row(&app, table_oid, row_oid);
+        }
+    }
 }
 
 #[tauri::command]
 /// Attempts to update a column with type Primitive, SingleSelectDropdown, Reference.
-pub fn try_update_primitive_value(app: AppHandle, table_oid: i64, row_oid: i64, column_oid: i64, new_primitive_value: String) -> Result<(), error::Error> {
-    data::try_update_primitive_value(table_oid, row_oid, column_oid, new_primitive_value)?;
+pub async fn try_update_primitive_value(app: AppHandle, table_oid: i64, row_oid: i64, column_oid: i64, new_primitive_value: Option<String>) {
+    match data::try_update_primitive_value(table_oid, row_oid, column_oid, new_primitive_value) {
+        Err(e) => {
+            process_action_error(&app, &e).await;
+            app.dialog()
+                .message(e)
+                .title("Unable to update value.")
+                .kind(MessageDialogKind::Warning)
+                .blocking_show();
+        },
+        _ => {}
+    }
     msg_update_table_row(&app, table_oid, row_oid);
-    return Ok(());
 }
 
 #[tauri::command]
@@ -180,4 +268,30 @@ pub fn get_table_data(table_oid: i64, cell_channel: Channel<data::Cell>) -> Resu
 pub fn get_table_row(table_oid: i64, row_oid: i64, cell_channel: Channel<data::RowCell>) -> Result<(), error::Error> {
     data::send_table_row(table_oid, row_oid, cell_channel)?;
     return Ok(());
+}
+
+
+#[tauri::command]
+pub fn undo() -> Result<(), error::Error> {
+    db::undo_db_action()?;
+    return Ok(());
+}
+
+/// Rollbacks the incomplete effects of an action applied to the database.
+async fn process_action_error(app: &AppHandle, e: &error::Error) {
+    match e {
+        error::Error::SaveInitializationError(_) => {},
+        _ => {
+            match undo() {
+                Ok(_) => {},
+                Err(e_inner) => {
+                    app.dialog()
+                        .message(e_inner)
+                        .title("An error occurred while walking back incomplete changes.")
+                        .kind(MessageDialogKind::Error)
+                        .blocking_show();
+                }
+            }
+        }
+    }
 }

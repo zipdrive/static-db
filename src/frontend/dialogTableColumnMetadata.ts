@@ -1,74 +1,77 @@
-import { invoke } from "@tauri-apps/api/core";
 import { message } from "@tauri-apps/plugin-dialog";
-import { ColumnType, ColumnMetadata } from "./tableutils";
+import { closeDialogAsync, ColumnType, executeAsync, queryAsync, TableColumnMetadata } from "./backendutils";
 
 
+let showAdvancedParameters: boolean = false;
+
+/**
+ * Show the parameters specific to the currently-specified type.
+ */
 function showParameters() {
     // Turn off all parameters
     const selectedType = (document.getElementById('column-type') as HTMLInputElement)?.value;
     document.querySelectorAll('.parameter').forEach((varParamNode) => { (varParamNode as HTMLTableRowElement).style.display = 'none'; });
 
     // Turn on only the parameters for the specified type
-    document.querySelectorAll(`.parameter-${selectedType}`).forEach((varParamNode) => { (varParamNode as HTMLTableRowElement).style.display = 'table-row'; });
+    document.querySelectorAll(`.parameter-${selectedType}`).forEach((varParamNode) => {
+        let varParamRowNode = varParamNode as HTMLTableRowElement;
+        if (!varParamRowNode.classList.contains('parameter-advanced') || (varParamRowNode.classList.contains('parameter-advanced') && showAdvancedParameters))
+            varParamRowNode.style.display = 'table-row'; 
+    });
+}
+
+/**
+ * Toggle whether advanced parameters are displayed or not.
+ */
+function toggleAdvancedParameters() {
+    showAdvancedParameters = !showAdvancedParameters;
+    showParameters();
 }
 
 /**
  * Retrieves the inputted metadata from the fields of the dialog.
  * @returns 
  */
-async function loadMetadataFromFields(): Promise<ColumnMetadata> {
+async function loadMetadataFromFields(): Promise<TableColumnMetadata> {
     const columnName = (document.getElementById('column-name') as HTMLInputElement)?.value;
     if (!columnName) {
         throw new Error("A column cannot have no name.");
     }
 
     const columnTypeStr = (document.getElementById('column-type') as HTMLInputElement)?.value;
-    const isNullable: boolean = (document.getElementById('column-is-nullable') as HTMLInputElement)?.checked;
-    let isUnique: boolean = (document.getElementById('column-is-unique') as HTMLInputElement)?.checked;
-    let isPrimaryKey: boolean = (document.getElementById('column-is-primary-key') as HTMLInputElement)?.checked;
-    const columnStyle: string = (document.getElementById('column-style') as HTMLTextAreaElement)?.value;
+    const isNullable: boolean = (document.getElementById('column-is-nullable') as HTMLInputElement)?.checked ?? true;
+    let isUnique: boolean = (document.getElementById('column-is-unique') as HTMLInputElement)?.checked ?? false;
+    let isPrimaryKey: boolean = (document.getElementById('column-is-primary-key') as HTMLInputElement)?.checked ?? false;
+    const columnStyle: string = (document.getElementById('column-style') as HTMLTextAreaElement)?.value ?? '';
+
     let columnType: ColumnType;
     switch (columnTypeStr) {
-        case 'bool':
-            columnType = { primitive: "Boolean" };
+        case 'Boolean':
+            columnType = { primitive: columnTypeStr };
             isUnique = false;
             break;
-        case 'int':
-            columnType = { primitive: "Integer" };
+        case 'Integer':
+        case 'Number':
+        case 'Date':
+        case 'Timestamp':
+        case 'Text':
+        case 'JSON':
+            columnType = { primitive: columnTypeStr };
             break;
-        case 'number':
-            columnType = { primitive: "Number" };
-            break;
-        case 'date':
-            columnType = { primitive: "Date" };
-            break;
-        case 'timestamp':
-            columnType = { primitive: "Timestamp" };
-            break;
-        case 'text':
-            columnType = { primitive: "Text" };
-            break;
-        case 'json':
-            columnType = { primitive: "JSON" };
-            break;
-        case 'file':
-            columnType = { primitive: "File" };
+        case 'File':
+        case 'Image':
+            columnType = { primitive: columnTypeStr };
             isUnique = false;
             isPrimaryKey = false;
             break;
-        case 'image':
-            columnType = { primitive: "Image" };
-            isUnique = false;
-            isPrimaryKey = false;
-            break;
-        case 'reference':
+        case 'Reference':
             const referencedTableOid = (document.getElementById('column-type-oid-reference') as HTMLInputElement)?.value;
             if (!referencedTableOid) {
                 throw new Error("You must select a referenced table for a column of type Reference.");
             }
             columnType = { reference: parseInt(referencedTableOid) };
             break;
-        case 'object':
+        case 'Object':
             const objTableOid = (document.getElementById('column-type-oid-reference') as HTMLInputElement)?.value;
             if (!objTableOid) {
                 throw new Error("You must select a global data type for a column of type Global Data Type.");
@@ -77,7 +80,7 @@ async function loadMetadataFromFields(): Promise<ColumnMetadata> {
             isUnique = false;
             isPrimaryKey = false;
             break;
-        case 'childTable':
+        case 'ChildTable':
             columnType = { childTable: 0 };
             isUnique = false;
             isPrimaryKey = false;
@@ -101,17 +104,25 @@ async function loadMetadataFromFields(): Promise<ColumnMetadata> {
 window.addEventListener("DOMContentLoaded", async () => {
     const urlParams = new URLSearchParams(window.location.search);
 
+    document.getElementById('advanced-parameter-toggle-button')?.addEventListener('click', toggleAdvancedParameters);
+
     if (urlParams.has('column_oid')) {
         const tableOid = urlParams.get('table_oid');
-        const columnOid = urlParams.get('columnOid');
+        const columnOid = urlParams.get('column_oid');
         if (!tableOid || !columnOid) {
             await message("Dialog window does not have expected GET parameters.", { title: "An error occurred while editing column.", kind: 'error' });
             return;
         }
 
         // Populate in the metadata for the column
-        await invoke<ColumnMetadata>('get_table_column', { columnOid: parseInt(columnOid) })
-        .then(columnMetadata => {
+        await queryAsync({
+            invokeAction: 'get_table_column',
+            invokeParams: { 
+                columnOid: parseInt(columnOid) 
+            }
+        })
+        .then((columnMetadata: TableColumnMetadata) => {
+            console.debug(columnMetadata);
             let columnNameInput: HTMLInputElement | null = document.getElementById('column-name') as HTMLInputElement;
             if (columnNameInput)
                 columnNameInput.value = columnMetadata.name;
@@ -165,18 +176,21 @@ window.addEventListener("DOMContentLoaded", async () => {
                     }
 
                     // Edit the column
-                    await invoke("edit_table_column", {
-                        tableOid: parseInt(tableOid),
-                        columnOid: parseInt(columnOid),
-                        columnName: changedMetadata.name,
-                        columnType: changedMetadata.columnType,
-                        columnStyle: changedMetadata.columnStyle,
-                        isNullable: changedMetadata.isNullable,
-                        isUnique: changedMetadata.isUnique,
-                        isPrimaryKey: changedMetadata.isPrimaryKey
+                    await executeAsync({
+                        invokeAction: "edit_table_column",
+                        invokeParams: {
+                            tableOid: parseInt(tableOid),
+                            columnOid: parseInt(columnOid),
+                            columnName: changedMetadata.name,
+                            columnType: changedMetadata.columnType,
+                            columnStyle: changedMetadata.columnStyle,
+                            isNullable: changedMetadata.isNullable,
+                            isUnique: changedMetadata.isUnique,
+                            isPrimaryKey: changedMetadata.isPrimaryKey
+                        }
                     });
                 })
-                .then(async (_) => await invoke("dialog_close", {}))
+                .then(async (_) => await closeDialogAsync())
                 .catch(async (e) => {
                     await message(e, {
                         title: "An error occurred while applying changes to table.",
@@ -185,7 +199,9 @@ window.addEventListener("DOMContentLoaded", async () => {
                 });
             });
         })
-        .catch(async e => await message(e, { title: "An error occurred while retrieving column metadata.", kind: 'error' }));
+        .catch(async e => {
+            await message(e, { title: "An error occurred while retrieving column metadata.", kind: 'error' });
+        });
     } else {
         // Create the column when OK is clicked
         document.querySelector('#create-table-column-button')?.addEventListener("click", async (e) => {
@@ -201,7 +217,9 @@ window.addEventListener("DOMContentLoaded", async () => {
 
             // Create the column
             await loadMetadataFromFields()
-            .then(async (metadata) => await invoke("create_table_column", {
+            .then(async (metadata) => await executeAsync({
+                invokeAction: "create_table_column",
+                invokeParams: {
                     tableOid: parseInt(tableOid),
                     columnName: metadata.name,
                     columnType: metadata.columnType,
@@ -210,11 +228,12 @@ window.addEventListener("DOMContentLoaded", async () => {
                     isNullable: metadata.isNullable,
                     isUnique: metadata.isUnique,
                     isPrimaryKey: metadata.isPrimaryKey
-                }))
-            .then(async (_) => await invoke("dialog_close", {}))
+                }
+            }))
+            .then(async (_) => await closeDialogAsync())
             .catch(async (e) => {
                 await message(e, {
-                    title: "An error occurred while creating table.",
+                    title: "An error occurred while creating column in table.",
                     kind: 'error'
                 });
             });
@@ -227,13 +246,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         e.preventDefault();
         e.returnValue = false;
 
-        await invoke("dialog_close", {})
-        .catch(async (e) => {
-            await message(e, {
-                title: "An error occurred while closing dialog box.",
-                kind: 'error'
-            });
-        });
+        await closeDialogAsync();
     });
 
     // Turn on or off various parameters to match the necessary parameters for the chosen column type

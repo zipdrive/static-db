@@ -1,9 +1,13 @@
 import { Menu, MenuItem } from "@tauri-apps/api/menu";
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { Channel } from "@tauri-apps/api/core";
 import { listen } from '@tauri-apps/api/event';
 import { message } from "@tauri-apps/plugin-dialog";
-import { ColumnMetadata, ColumnCellInfo, addTableCellToRow } from "./tableutils";
+import { TableCellChannelPacket, TableColumnMetadata, TableRowCellChannelPacket, executeAsync, openDialogAsync, queryAsync } from './backendutils';
+import { addTableColumnCellToRow } from "./tableutils";
 
+/**
+ * Update the displayed list of tables.
+ */
 async function updateTableListAsync() {
   // Remove the tables in the sidebar that were present before
   document.querySelectorAll('.table-sidebar-button').forEach(element => {
@@ -37,20 +41,20 @@ async function updateTableListAsync() {
   };
 
   // Send a command to Rust to get the list of tables from the database
-  await invoke("get_table_list", { tableChannel: onReceiveUpdatedTable });
+  await queryAsync({
+    invokeAction: "get_table_list", 
+    invokeParams: { tableChannel: onReceiveUpdatedTable }
+  });
 }
 
 /**
  * Opens the dialog to create a new table.
  */
 export async function createTable() {
-  await invoke("dialog_create_table", {})
-    .catch(async e => {
-      await message(e, {
-        title: 'Error while opening dialog box to create table.',
-        kind: 'error'
-      });
-    });
+  await openDialogAsync({
+    invokeAction: "dialog_create_table", 
+    invokeParams: {}
+  });
 }
 
 
@@ -82,9 +86,12 @@ function addRowToTable(tableBodyNode: HTMLElement, rowOid: number): HTMLTableRow
       MenuItem.new({
         text: 'Insert New Row',
         action: async () => {
-          await invoke('insert_row', {
-            tableOid: currentTableOid,
-            rowOid: rowOid
+          await executeAsync({
+            invokeAction: 'insert_row', 
+            invokeParams: {
+              tableOid: currentTableOid,
+              rowOid: rowOid
+            }
           })
           .catch(async e => {
             await message(e, {
@@ -97,9 +104,12 @@ function addRowToTable(tableBodyNode: HTMLElement, rowOid: number): HTMLTableRow
       MenuItem.new({
         text: 'Delete Row',
         action: async () => {
-          await invoke('delete_row', {
-            tableOid: currentTableOid,
-            rowOid: rowOid
+          await executeAsync({
+            invokeAction: 'delete_row',
+            invokeParams: {
+              tableOid: currentTableOid,
+              rowOid: rowOid
+            }
           })
           .catch(async e => {
             await message(e, {
@@ -131,10 +141,7 @@ function addRowToTable(tableBodyNode: HTMLElement, rowOid: number): HTMLTableRow
  * @param tableOid The OID of the table.
  */
 export async function displayTableAsync(tableOid: number) {
-  console.debug(`displayTable(${tableOid}) called.`);
   currentTableOid = tableOid;
-
-  type TableCell = { rowOid: number } | ColumnCellInfo;
 
   // Strip the former contents of the table
   let tableNode: HTMLTableElement | null = document.querySelector('#table-content');
@@ -145,11 +152,12 @@ export async function displayTableAsync(tableOid: number) {
   let tableBodyNode: HTMLElement | null = document.querySelector('#table-content > tbody');
 
   // Set up a channel to populate the list of user-defined columns
-  let tableColumnList: ColumnMetadata[] = []
-  const onReceiveColumn = new Channel<ColumnMetadata>();
+  let tableColumnList: TableColumnMetadata[] = []
+  const onReceiveColumn = new Channel<TableColumnMetadata>();
   onReceiveColumn.onmessage = (column) => {
     // Add the column to the list of columns
     const columnOid = column.oid;
+    const columnOrdering = tableColumnList.length;
     tableColumnList.push(column);
 
     // Add a header for the column
@@ -170,13 +178,40 @@ export async function displayTableAsync(tableOid: number) {
 
         const contextMenuItems = await Promise.all([
           MenuItem.new({
-            text: 'Insert New Column'
+            text: 'Insert New Column',
+            action: async () => {
+              await openDialogAsync({
+                invokeAction: 'dialog_create_table_column',
+                invokeParams: {
+                  tableOid: tableOid,
+                  columnOrdering: columnOrdering
+                }
+              });
+            }
           }),
           MenuItem.new({
-            text: 'Edit Column'
+            text: 'Edit Column',
+            action: async () => {
+              await openDialogAsync({
+                invokeAction: 'dialog_edit_table_column',
+                invokeParams: {
+                  tableOid: tableOid,
+                  columnOid: columnOid
+                }
+              });
+            }
           }),
           MenuItem.new({
-            text: 'Delete Column'
+            text: 'Delete Column',
+            action: async () => {
+              await executeAsync({
+                invokeAction: 'delete_table_column',
+                invokeParams: {
+                  tableOid: tableOid,
+                  columnOid: columnOid
+                }
+              });
+            }
           })
         ]);
         const contextMenu = await Menu.new({
@@ -194,13 +229,13 @@ export async function displayTableAsync(tableOid: number) {
   };
 
   // Send a command to Rust to get the list of table columns from the database
-  await invoke("get_table_column_list", { tableOid: tableOid, columnChannel: onReceiveColumn })
-    .catch(async e => {
-      await message(e, {
-        title: 'Error while retrieving list of columns for table.',
-        kind: 'error'
-      });
-    });
+  await queryAsync({
+    invokeAction: "get_table_column_list", 
+    invokeParams: {
+      tableOid: tableOid, 
+      columnChannel: onReceiveColumn 
+    }
+  });
 
   // Add a final column header that is a button to add a new column
   const numColumns = tableColumnList.length;
@@ -209,15 +244,13 @@ export async function displayTableAsync(tableOid: number) {
     tableAddColumnHeaderNode.id = 'add-new-column-button';
     tableAddColumnHeaderNode.innerText = 'Add New Column';
     tableAddColumnHeaderNode.addEventListener('click', async (_) => {
-      await invoke("dialog_create_table_column", {
-        tableOid: tableOid,
-        columnOrdering: numColumns
-      }).catch(async e => {
-          await message(e, {
-            title: 'Error while opening dialog box to create table.',
-            kind: 'error'
-          });
-        });
+      await openDialogAsync({
+        invokeAction: "dialog_create_table_column", 
+        invokeParams: {
+          tableOid: tableOid,
+          columnOrdering: numColumns
+        }
+      });
     });
     tableHeaderRowNode?.insertAdjacentElement('beforeend', tableAddColumnHeaderNode);
   }
@@ -230,20 +263,25 @@ export async function displayTableAsync(tableOid: number) {
   // Set the footer to span the entire row
   tableFooterCellNode.setAttribute('colspan', (tableColumnList.length + 2).toString());
   // Set what it should do on click
-  tableFooterCellNode.addEventListener('click', (_) => {
-    invoke('push_row', { tableOid: tableOid })
-      .catch(async (e) => {
-        await message(e, {
-          title: 'Error while adding new row into table.',
-          kind: 'error'
-        });
+  tableFooterCellNode.addEventListener('click', async (_) => {
+    await executeAsync({
+      invokeAction: 'push_row', 
+      invokeParams: {
+        tableOid: tableOid 
+      }
+    })
+    .catch(async (e) => {
+      await message(e, {
+        title: 'Error while adding new row into table.',
+        kind: 'error'
       });
+    });
   });
   tableFooterRowNode?.insertAdjacentElement('beforeend', tableFooterCellNode);
 
   // Set up a channel to populate the rows of the table
   let rowOids: number[] = [];
-  const onReceiveCell = new Channel<TableCell>();
+  const onReceiveCell = new Channel<TableCellChannelPacket>();
   let currentRowNode: HTMLTableRowElement | null = null;
   onReceiveCell.onmessage = (cell) => {
     if ('rowOid' in cell) {
@@ -257,19 +295,19 @@ export async function displayTableAsync(tableOid: number) {
       if (currentRowNode != null) {
         // Get current row and column OID
         const rowOid = rowOids[rowOids.length - 1];
-        addTableCellToRow(currentRowNode, tableOid, rowOid, cell);
+        addTableColumnCellToRow(currentRowNode, tableOid, rowOid, cell);
       }
     }
   };
 
   // Send a command to Rust to get the list of rows from the database
-  await invoke("get_table_data", { tableOid: tableOid, cellChannel: onReceiveCell })
-    .catch(async e => {
-      await message(e, {
-        title: 'Error while retrieving rows of table.',
-        kind: 'error'
-      });
-    });
+  await queryAsync({
+    invokeAction: "get_table_data",
+    invokeParams: {
+      tableOid: tableOid, 
+      cellChannel: onReceiveCell 
+    }
+  });
 }
 
 /**
@@ -284,12 +322,10 @@ export async function updateRowAsync(tableOid: number, rowOid: number) {
     return;
   }
 
-  type TableCell = { rowExists: boolean } | ColumnCellInfo;
-
   let tableRowNode: HTMLTableRowElement | null = document.getElementById(`table-content-row-${rowOid}`) as HTMLTableRowElement;
 
   // Set up a channel to populate the columns of the table
-  const onReceiveCell = new Channel<TableCell>();
+  const onReceiveCell = new Channel<TableRowCellChannelPacket>();
   onReceiveCell.onmessage = (cell) => {
     if ('rowExists' in cell) {
       if (cell.rowExists) {
@@ -316,19 +352,20 @@ export async function updateRowAsync(tableOid: number, rowOid: number) {
     } else {
       // Add cell to current row
       if (tableRowNode != null) {
-        addTableCellToRow(tableRowNode, tableOid, rowOid, cell);
+        addTableColumnCellToRow(tableRowNode, tableOid, rowOid, cell);
       }
     }
   };
 
   // Send a command to Rust to get the list of rows from the database
-  await invoke("get_table_row", { tableOid: tableOid, rowOid: rowOid, cellChannel: onReceiveCell })
-    .catch(async e => {
-      await message(e, {
-        title: 'Error while retrieving row of table.',
-        kind: 'error'
-      });
-    });
+  await queryAsync({
+    invokeAction: "get_table_row", 
+    invokeParams: {
+      tableOid: tableOid, 
+      rowOid: rowOid, 
+      cellChannel: onReceiveCell 
+    }
+  });
 }
 
 

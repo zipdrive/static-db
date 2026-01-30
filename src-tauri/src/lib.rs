@@ -23,7 +23,8 @@ pub fn run() {
             backend::delete_row,
             backend::try_update_primitive_value,
             backend::get_table_data,
-            backend::get_table_row
+            backend::get_table_row,
+            backend::undo
         ])
         .on_window_event(|window, event| {
             match event {

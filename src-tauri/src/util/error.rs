@@ -1,27 +1,19 @@
 use rusqlite::Error as RusqliteError;
-use tauri::Error as TauriError;
+use tauri::{Error as TauriError, ipc::Invoke};
 use serde::Serialize;
 use tauri::ipc::InvokeError;
 
 pub enum Error {
     AdhocError(&'static str),
+    SaveInitializationError(RusqliteError),
     RusqliteError(RusqliteError),
     TauriError(TauriError),
 }
 
 impl Into<InvokeError> for Error {
     fn into(self) -> InvokeError {
-        match self {
-            Self::AdhocError(s) => {
-                return InvokeError(s.into());
-            },
-            Self::RusqliteError(e) => {
-                return InvokeError(format!("SQLite error occurred: {}", e).into());
-            },
-            Self::TauriError(e) => {
-                return InvokeError(format!("Tauri error occurred: {}", e).into());
-            }
-        };
+        let as_str: String = self.into();
+        return InvokeError(as_str.into());
     }
 }
 
@@ -40,14 +32,17 @@ impl From<TauriError> for Error {
 impl Into<String> for Error {
     fn into(self) -> String {
         match self {
-            Self::AdhocError(s) => { return s.into(); },
+            Self::AdhocError(s) => { 
+                return s.into(); 
+            },
+            Self::SaveInitializationError(e) => {
+                return format!("An SQLite error occurred while attempting to save the state of the database: {}", e);
+            },
             Self::RusqliteError(e) => { 
-                // TODO later
-                return String::from(""); 
+                return format!("SQLite error occurred: {}", e);
             },
             Self::TauriError(e) => { 
-                // TODO later
-                return String::from(""); 
+                return format!("Tauri error occurred: {}", e); 
             }
         }
     }

@@ -125,7 +125,7 @@ pub fn delete(table_oid: i64, row_oid: i64) -> Result<(), error::Error> {
 }
 
 /// Attempts to update a primitive value in a table.
-pub fn try_update_primitive_value(table_oid: i64, row_oid: i64, column_oid: i64, new_value: String) -> Result<(), error::Error> {
+pub fn try_update_primitive_value(table_oid: i64, row_oid: i64, column_oid: i64, new_value: Option<String>) -> Result<(), error::Error> {
     let action = db::begin_db_action()?;
 
     // Update the value
@@ -184,7 +184,7 @@ fn construct_data_query(action: &db::DbAction<'_>, table_oid: i64) -> Result<(St
                 | MetadataColumnType::SingleSelectDropdown(_) => {
                     // Primitive type
                     // Single-select dropdown (i.e. *-to-1 join with table of values)
-                    select_cmd_cols = format!("{select_cmd_cols}, t.COLUMN{column_oid}");
+                    select_cmd_cols = format!("{select_cmd_cols}, CAST(t.COLUMN{column_oid} AS TEXT) AS COLUMN{column_oid}");
                     
                     // Check for invalid nonunique rows
                     if enforce_uniqueness {
