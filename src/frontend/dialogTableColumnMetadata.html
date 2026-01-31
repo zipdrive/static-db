@@ -39,7 +39,19 @@
                 <tr class="parameter parameter-ssdropdown parameter-msdropdown">
                     <td><label for="column-dropdown-values">Dropdown Values:</label></td>
                     <td>
-                        <input name="column-dropdown-values" id="column-dropdown-values" type="text" />
+                        <table id="column-dropdown-values">
+                            <colgroup>
+                                <col span="1" style="display: none;">
+                                <col span="1">
+                                <col span="1">
+                            </colgroup>
+                            <tbody></tbody>
+                            <tfoot>
+                                <tr>
+                                    <td colspan="2" id="add-new-dropdown-value-button" class="clickable-text">Add New Value</td>
+                                </tr>
+                            </tfoot>
+                        </table>
                     </td>
                 </tr>
                 <tr class="parameter parameter-Object">
@@ -62,20 +74,20 @@
                         <input name="column-is-nullable" id="column-is-nullable" type="checkbox" checked />
                     </td>
                 </tr>
-                <tr class="parameter parameter-Text parameter-Integer parameter-Number parameter-Date parameter-Timestamp parameter-Reference parameter-JSON">
+                <tr class="parameter parameter-Text parameter-Integer parameter-Number parameter-Date parameter-Timestamp parameter-Reference parameter-JSON parameter-MultiSelectDropdown">
                     <td><label for="column-is-unique">Is Unique?</label></td>
                     <td>
                         <input name="column-is-unique" id="column-is-unique" type="checkbox" />
                     </td>
                 </tr>
-                <tr class="parameter parameter-Text parameter-Boolean parameter-Integer parameter-Number parameter-Date parameter-Timestamp parameter-Reference parameter-JSON">
+                <tr class="parameter parameter-Text parameter-Boolean parameter-Integer parameter-Number parameter-Date parameter-Timestamp parameter-Reference parameter-JSON parameter-SingleSelectDropdown parameter-MultiSelectDropdown">
                     <td><label for="column-is-primary-key">Part of Table's Index?</label></td>
                     <td>
                         <input name="column-is-primary-key" id="column-is-primary-key" type="checkbox" />
                     </td>
                 </tr>
                 <tr>
-                    <td colspan="2" id="advanced-parameter-toggle-button" class="clickable-text">Advanced</td>
+                    <td colspan="2" id="advanced-parameter-toggle-button" class="clickable-text">⊕ Advanced</td>
                 </tr>
                 <tr class="parameter parameter-advanced parameter-Text parameter-Boolean parameter-Integer parameter-Number parameter-Date parameter-Timestamp parameter-ChildTable parameter-Object parameter-Reference parameter-File parameter-Image parameter-JSON">
                     <td><label for="column-style">Column Style:</label></td>

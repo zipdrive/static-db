@@ -1,5 +1,6 @@
 import { message } from "@tauri-apps/plugin-dialog";
-import { closeDialogAsync, ColumnType, executeAsync, queryAsync, TableColumnMetadata } from "./backendutils";
+import { BasicMetadata, closeDialogAsync, ColumnType, DropdownValue, executeAsync, queryAsync, TableColumnMetadata } from "./backendutils";
+import { Channel } from "@tauri-apps/api/core";
 
 
 let showAdvancedParameters: boolean = false;
@@ -26,6 +27,11 @@ function showParameters() {
 function toggleAdvancedParameters() {
     showAdvancedParameters = !showAdvancedParameters;
     showParameters();
+
+    let advancedParametersButton: HTMLElement | null = document.getElementById('advanced-parameter-toggle-button');
+    if (advancedParametersButton) {
+        advancedParametersButton.innerText = `${showAdvancedParameters ? '⊖' : '⊕'} Advanced`;
+    }
 }
 
 /**
@@ -63,6 +69,13 @@ async function loadMetadataFromFields(): Promise<TableColumnMetadata> {
             columnType = { primitive: columnTypeStr };
             isUnique = false;
             isPrimaryKey = false;
+            break;
+        case 'SingleSelectDropdown':
+            columnType = { singleSelectDropdown: 0 };
+            isUnique = false;
+            break;
+        case 'MultiSelectDropdown':
+            columnType = { multiSelectDropdown: 0 };
             break;
         case 'Reference':
             const referencedTableOid = (document.getElementById('column-type-oid-reference') as HTMLInputElement)?.value;
@@ -106,7 +119,43 @@ window.addEventListener("DOMContentLoaded", async () => {
 
     document.getElementById('advanced-parameter-toggle-button')?.addEventListener('click', toggleAdvancedParameters);
 
+    document.getElementById('add-new-dropdown-value-button')?.addEventListener('click', (_) => {
+        let columnDropdownValuesTbl = document.querySelector('#column-dropdown-values > tbody');
+        columnDropdownValuesTbl?.insertAdjacentHTML('beforeend', 
+            `<tr>
+                <td class="dropdown-value-oid"></td>
+                <td>${columnDropdownValuesTbl.childElementCount + 1}</td>
+                <td><div editablecontent class="dropdown-value-editor" /></td>
+            </tr>`)
+    });
+
+    // Fill in the dropdown of possible Reference types
+    let columnReferenceInput: HTMLSelectElement | null = document.getElementById('column-type-oid-reference') as HTMLSelectElement;
+    if (columnReferenceInput) {
+        const referenceTypeChannel: Channel<BasicMetadata> = new Channel<BasicMetadata>();
+        referenceTypeChannel.onmessage = (referenceType) => {
+            let columnReferenceOption: HTMLOptionElement = document.createElement('option');
+            columnReferenceOption.innerText = referenceType.name;
+            columnReferenceOption.value = referenceType.oid.toString();
+            columnReferenceInput.insertAdjacentElement('beforeend', columnReferenceOption);
+        };
+    }
+
+    // Fill in the dropdown of possible Global Data Type types
+    let columnObjDataTypeInput: HTMLSelectElement | null = document.getElementById('column-type-oid-object') as HTMLSelectElement;
+    if (columnObjDataTypeInput) {
+        const objDataTypeChannel: Channel<BasicMetadata> = new Channel<BasicMetadata>();
+        objDataTypeChannel.onmessage = (objDataType) => {
+            let columnObjDataTypeOption: HTMLOptionElement = document.createElement('option');
+            columnObjDataTypeOption.innerText = objDataType.name;
+            columnObjDataTypeOption.value = objDataType.oid.toString();
+            columnObjDataTypeInput.insertAdjacentElement('beforeend', columnObjDataTypeOption);
+        };
+    }
+
     if (urlParams.has('column_oid')) {
+        // This indicates that the column exists already and is being edited
+
         const tableOid = urlParams.get('table_oid');
         const columnOid = urlParams.get('column_oid');
         if (!tableOid || !columnOid) {
@@ -132,13 +181,17 @@ window.addEventListener("DOMContentLoaded", async () => {
                 if ('primitive' in columnMetadata.columnType) {
                     columnTypeInput.value = columnMetadata.columnType.primitive;
                 } else if ('singleSelectDropdown' in columnMetadata.columnType) {
-                    throw new Error('Not implemented');
+                    columnTypeInput.value = 'SingleSelectDropdown';
                 } else if ('multiSelectDropdown' in columnMetadata.columnType) {
-                    throw new Error('Not implemented');
+                    columnTypeInput.value = 'MultiSelectDropdown';
                 } else if ('reference' in columnMetadata.columnType) {
                     columnTypeInput.value = 'Reference';
+                    if (columnReferenceInput)
+                        columnReferenceInput.value = columnMetadata.columnType.reference.toString();
                 } else if ('childObject' in columnMetadata.columnType) {
                     columnTypeInput.value = 'Object';
+                    if (columnObjDataTypeInput)
+                        columnObjDataTypeInput.value = columnMetadata.columnType.childObject.toString();
                 } else if ('childTable' in columnMetadata.columnType) {
                     columnTypeInput.value = 'ChildTable';
                 }
@@ -192,14 +245,20 @@ window.addEventListener("DOMContentLoaded", async () => {
                     // Update dropdown values
                     if ('singleSelectDropdown' in changedMetadata.columnType || 'multiSelectDropdown' in changedMetadata.columnType) {
                         // Pull new list of dropdown values from form
-                        // TODO
+                        let dropdownValues: DropdownValue[] = [];
+                        document.querySelectorAll('#column-dropdown-values > tbody > tr').forEach((dropdownValueRow) => {
+                            dropdownValues.push({
+                                trueValue: (dropdownValueRow.querySelector('.dropdown-value-oid') as HTMLTableCellElement)?.innerText,
+                                displayValue: (dropdownValueRow.querySelector('.dropdown-value-editor') as HTMLDivElement)?.innerText
+                            });
+                        });
 
                         // Send request to update set of dropdown values
                         await executeAsync({
                             editTableColumnDropdownValues: {
                                 tableOid: parseInt(tableOid),
                                 columnOid: parseInt(columnOid),
-                                dropdownValues: []
+                                dropdownValues: dropdownValues
                             }
                         });
                     }
@@ -217,6 +276,8 @@ window.addEventListener("DOMContentLoaded", async () => {
             await message(e, { title: "An error occurred while retrieving column metadata.", kind: 'error' });
         });
     } else {
+        // This indicates that the column is being created for the first time, so leave the fields populated with the defaults
+
         // Create the column when OK is clicked
         document.querySelector('#create-table-column-button')?.addEventListener("click", async (e) => {
             e.preventDefault();

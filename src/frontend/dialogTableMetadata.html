@@ -4,69 +4,19 @@
     <meta charset="UTF-8" />
     <link rel="stylesheet" href="/src/styles.css" />
     <title>StaticDB</title>
-    <script type="module">
-        import { invoke } from "@tauri-apps/api/core";
-        import { message } from "@tauri-apps/plugin-dialog";
-
-        async function createTable() {
-            let tableName = document.querySelector('[name="tableName"]')?.value;
-            
-            if (!tableName || !tableName.trim()) {
-                message("Unable to create a table with no name.", {
-                    title: "An error occurred while creating table.",
-                    kind: 'error'
-                });
-            } else {
-                invoke("create_table", {
-                    name: tableName
-                })
-                .then(async (_) => await invoke("dialog_close", {}))
-                .catch(async (e) => {
-                    await message(e, {
-                        title: "An error occurred while creating table.",
-                        kind: 'error'
-                    });
-                });
-            }
-        }
-
-        function cancel() {
-            invoke("dialog_close", {})
-            .catch(async (e) => {
-                await message(e, {
-                    title: "An error occurred while closing dialog box.",
-                    kind: 'error'
-                });
-            });
-        }
-
-        // Add initial listeners
-        window.addEventListener("DOMContentLoaded", () => {
-            document.querySelector('#create-table-button')?.addEventListener("click", async (e) => {
-                console.debug('createTable() called.');
-                e.preventDefault();
-                e.returnValue = false;
-                await createTable();
-            });
-            document.querySelector('#cancel-create-table-button')?.addEventListener("click", async (e) => {
-                e.preventDefault();
-                e.returnValue = false;
-                await cancel();
-            });
-        });
-    </script>
+    <script type="module" src="./dialogTableMetadata.ts"></script>
   </head>
 
   <body>
     <form class="dialog-form">
         <table class="dialog-form-table">
             <tr>
-                <td>Table Name:</td>
-                <td><input name="tableName" type="text" /></td>
+                <td><label for="tableName">Table Name:</label></td>
+                <td><input name="tableName" id="tableName" type="text" /></td>
             </tr>
         </table>
         <div class="dialog-buttons">
-            <button id="create-table-button">Create Table</button>
+            <button id="create-table-button">OK</button>
             <button id="cancel-create-table-button">Cancel</button>
         </div>
     </form>

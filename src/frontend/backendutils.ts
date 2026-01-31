@@ -1,7 +1,7 @@
 import { invoke, Channel } from "@tauri-apps/api/core";
 import { message } from "@tauri-apps/plugin-dialog";
 
-export type TableBasicMetadata = {
+export type BasicMetadata = {
     oid: number,
     name: string 
 };
@@ -48,7 +48,7 @@ export type TableRowCellChannelPacket = {
 export type Query = {
     invokeAction: 'get_table_list',
     invokeParams: {
-        tableChannel: Channel<TableBasicMetadata>
+        tableChannel: Channel<BasicMetadata>
     }
 } | {
     invokeAction: 'get_table_column',
@@ -66,6 +66,16 @@ export type Query = {
     invokeParams: {
         tableOid: number,
         columnChannel: Channel<TableColumnMetadata>
+    }
+} | {
+    invokeAction: 'get_table_column_reference_values',
+    invokeParams: {
+        referenceTypeChannel: Channel<BasicMetadata>
+    }
+} | {
+    invokeAction: 'get_table_column_object_values',
+    invokeParams: {
+        objectTypeChannel: Channel<BasicMetadata>
     }
 } | {
     invokeAction: 'get_table_data',
@@ -104,7 +114,7 @@ export type Dialog = {
 
 export type Action = {
     createTable: {
-        name: string
+        tableName: string
     }
 } | {
     deleteTable: {
@@ -212,37 +222,25 @@ export async function closeDialogAsync(): Promise<void> {
 
 
 
-let historyStack: Action[] = [];
-let redoStack: Action[] = [];
-
 /**
  * Does an action with an impact on the state of the database.
  * @param action The action to perform.
  * @returns May return the OID of the object created. Usually returns void.
  */
 export async function executeAsync(action: Action): Promise<void> {
-    historyStack.push(action);
-    redoStack = [];
-    return await invoke('execute', action);
+    return await invoke('execute', { action: action });
 }
 
 /**
  * Undoes the last action performed.
  */
 export async function undoAsync() {
-    const lastActionPerformed = historyStack.pop();
-    if (lastActionPerformed) {
-        redoStack.push();
-        await invoke('undo', {});
-    }
+    await invoke('undo', {});
 }
 
 /**
  * Redoes the last action that was undone.
  */
 export async function redoAsync() {
-    const lastActionUndone = redoStack.pop();
-    if (lastActionUndone) {
-        await executeAsync(lastActionUndone);
-    }
+    await invoke('redo', {});
 }

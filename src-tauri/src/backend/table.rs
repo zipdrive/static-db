@@ -21,9 +21,13 @@ pub fn create(name: String) -> Result<i64, error::Error> {
         "INSERT INTO METADATA_TABLE (OID, NAME) VALUES (?1, ?2);",
         params![table_oid, &name]
     )?;
-    let create_table_cmd: String = format!("CREATE TABLE TABLE{} (OID INTEGER PRIMARY KEY, TRASH TINYINT NOT NULL DEFAULT 0) STRICT;", table_oid);
+    let create_table_cmd: String = format!("
+    CREATE TABLE TABLE{table_oid} (
+        OID INTEGER PRIMARY KEY, 
+        TRASH BOOLEAN NOT NULL DEFAULT 0
+    ) STRICT;");
     trans.execute(&create_table_cmd, [])?;
-    let create_view_cmd = format!("CREATE VIEW TABLE{table_oid}_SURROGATE (OID, DISPLAY_VALUE) AS SELECT OID, CASE WHEN TRASH = 0 THEN OID ELSE '— DELETED —' END AS DISPLAY_VALUE FROM TABLE{table_oid};");
+    let create_view_cmd = format!("CREATE VIEW TABLE{table_oid}_SURROGATE (OID, DISPLAY_VALUE) AS SELECT OID, CASE WHEN TRASH = 0 THEN '— NO PRIMARY KEY —' ELSE '— DELETED —' END AS DISPLAY_VALUE FROM TABLE{table_oid};");
     trans.execute(&create_view_cmd, [])?;
     return Ok(table_oid);
 }
@@ -56,19 +60,19 @@ pub fn unmove_trash(table_oid: i64) -> Result<(), error::Error> {
 
 /// Deletes the table with the given OID and all associated local columns.
 /// Generally, this function should only be called after the table has been flagged as trash for reasonably long enough that the user could undo it if they wanted to.
-pub fn delete(oid: i64) -> Result<(), error::Error> {
+pub fn delete(table_oid: i64) -> Result<(), error::Error> {
     let mut conn = db::open()?;
     let trans = conn.transaction()?;
 
     // Drop data from the table
-    let drop_cmd: String = format!("DROP TABLE TABLE{};", oid);
+    let drop_cmd: String = format!("DROP TABLE IF EXISTS TABLE{table_oid};");
     trans.execute(&drop_cmd, [])?;
 
     // Drop tables associated locally with the table
     // TODO
 
     // Finally, drop the table's metadata
-    trans.execute("DELETE FROM METADATA_TABLE_COLUMN_TYPE WHERE OID = ?1;", [oid])?;
+    trans.execute("DELETE FROM METADATA_TABLE_COLUMN_TYPE WHERE OID = ?1;", params![table_oid])?;
     return Ok(());
 }
 

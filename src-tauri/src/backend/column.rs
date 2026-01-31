@@ -1,4 +1,6 @@
+use std::cell::Ref;
 use std::collections::HashMap;
+use std::sync::mpsc::channel;
 use rusqlite::fallible_streaming_iterator::FallibleStreamingIterator;
 use rusqlite::{params, Row, Error as RusqliteError, OptionalExtension};
 use serde::{Deserialize, Serialize};
@@ -561,8 +563,13 @@ pub fn set_table_column_dropdown_values(column_oid: i64, dropdown_values: Vec<Dr
                             Ok(o) => o,
                             Err(_) => { return Err(error::Error::AdhocError("Unable to parse dropdown value OID as integer.")); }
                         };
-                        let insert_cmd = format!("INSERT INTO TABLE{column_type_oid} (OID, VALUE) VALUES (?1, ?2) ON CONFLICT DO UPDATE SET TRASH = 0, VALUE = excluded.VALUE;");
-                        trans.execute(&insert_cmd, params![dropdown_oid, dropdown_value.display_value])?;
+                        let update_cmd = format!("
+                        UPDATE TABLE{column_type_oid} 
+                        SET 
+                            OID = (SELECT MAX(OID) AS NEW_OID FROM TABLE{column_type_oid}) + 1, 
+                            VALUE = ?1
+                        WHERE OID = ?2;");
+                        trans.execute(&update_cmd, params![dropdown_value.display_value, dropdown_oid])?;
                     },
                     None => {
                         let insert_cmd = format!("INSERT INTO TABLE{column_type_oid} (VALUE) VALUES (?1);");
@@ -668,5 +675,38 @@ pub fn send_table_column_dropdown_values(column_oid: i64, dropdown_value_channel
         },
         _ => {}
     };
+    return Ok(());
+}
+
+
+#[derive(Serialize)]
+pub struct BasicTypeMetadata {
+    oid: i64,
+    name: String
+}
+
+/// Send a list of basic metadata for a particular kind of type with associated tables (i.e. Reference, ChildObject, ChildTable).
+pub fn send_type_metadata_list(column_type: column_type::MetadataColumnType, type_channel: Channel<BasicTypeMetadata>) -> Result<(), error::Error> {
+    let mut conn = db::open()?;
+    let trans = conn.transaction()?;
+
+    db::query_iterate(&trans, 
+        "SELECT 
+            tbl.OID,
+            tbl.OID AS PARENT_OID,
+            tbl.NAME
+        FROM METADATA_TABLE tbl
+        INNER JOIN METADATA_TABLE_COLUMN_TYPE typ ON typ.OID = tbl.OID
+        WHERE typ.MODE = ?1
+        ORDER BY tbl.NAME;", 
+        [column_type.get_type_mode()], 
+        &mut |row| {
+            type_channel.send(BasicTypeMetadata {
+                oid: row.get(0)?,
+                name: row.get(1)?
+            })?;
+            return Ok(());
+        }
+    )?;
     return Ok(());
 }

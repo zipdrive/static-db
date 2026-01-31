@@ -1,5 +1,5 @@
 {
-  "name": "static-db",
+  "name": "dungeon-db",
   "private": true,
   "version": "0.1.0",
   "type": "module",

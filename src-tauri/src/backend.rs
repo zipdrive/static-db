@@ -452,7 +452,21 @@ pub fn get_table_column(column_oid: i64) -> Result<Option<column::Metadata>, err
 /// Send possible dropdown values for a column.
 pub fn get_table_column_dropdown_values(column_oid: i64, dropdown_value_channel: Channel<column::DropdownValue>) -> Result<(), error::Error> {
     // Use channel to send DropdownValue objects
-    column::send_table_column_dropdown_values(column_oid, dropdown_value_channel);
+    column::send_table_column_dropdown_values(column_oid, dropdown_value_channel)?;
+    return Ok(());
+}
+
+#[tauri::command] 
+/// Send possible tables to be referenced.
+pub fn get_table_column_reference_values(reference_type_channel: Channel<column::BasicTypeMetadata>) -> Result<(), error::Error> {
+    column::send_type_metadata_list(column_type::MetadataColumnType::Reference(0), reference_type_channel)?;
+    return Ok(());
+}
+
+#[tauri::command] 
+/// Send possible global data types for an object.
+pub fn get_table_column_object_values(object_type_channel: Channel<column::BasicTypeMetadata>) -> Result<(), error::Error> {
+    column::send_type_metadata_list(column_type::MetadataColumnType::ChildObject(0), object_type_channel)?;
     return Ok(());
 }
 

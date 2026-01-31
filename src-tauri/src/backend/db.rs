@@ -52,7 +52,7 @@ fn initialize_new_db_at_path<P: AsRef<Path>>(path: P) -> Result<(), error::Error
     -- __METADATA_TYPE stores all pre-defined and user-defined data types
     CREATE TABLE METADATA_TABLE_COLUMN_TYPE (
         OID INTEGER PRIMARY KEY,
-        TRASH TINYINT NOT NULL DEFAULT 0,
+        TRASH BOOLEAN NOT NULL DEFAULT 0,
         MODE INTEGER NOT NULL DEFAULT 0 
             -- Modes are:
             -- 0 = primitive
@@ -76,7 +76,7 @@ fn initialize_new_db_at_path<P: AsRef<Path>>(path: P) -> Result<(), error::Error
     -- METADATA_TABLE stores all user-defined tables and data types
     CREATE TABLE METADATA_TABLE (
         OID INTEGER PRIMARY KEY,
-        TRASH TINYINT NOT NULL DEFAULT 0,
+        TRASH BOOLEAN NOT NULL DEFAULT 0,
         PARENT_TABLE_OID INTEGER,
         NAME TEXT NOT NULL DEFAULT 'UnnamedTable',
         FOREIGN KEY (OID) REFERENCES METADATA_TABLE_COLUMN_TYPE (OID) 
@@ -94,13 +94,14 @@ fn initialize_new_db_at_path<P: AsRef<Path>>(path: P) -> Result<(), error::Error
             ON DELETE CASCADE,
         INHERITOR_TABLE_OID INTEGER REFERENCES METADATA_TABLE(OID) 
             ON UPDATE CASCADE 
-            ON DELETE CASCADE
+            ON DELETE CASCADE,
+        TRASH BOOLEAN NOT NULL DEFAULT 0
     );
 
     -- METADATA_TABLE_COLUMN stores all columns of user-defined tables and data types
     CREATE TABLE METADATA_TABLE_COLUMN (
         OID INTEGER PRIMARY KEY,
-        TRASH TINYINT NOT NULL DEFAULT 0,
+        TRASH BOOLEAN NOT NULL DEFAULT 0,
         TABLE_OID INTEGER NOT NULL,
         NAME TEXT NOT NULL DEFAULT 'Column',
         TYPE_OID INTEGER NOT NULL DEFAULT 8,

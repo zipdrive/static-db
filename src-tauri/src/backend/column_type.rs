@@ -104,7 +104,7 @@ impl MetadataColumnType {
     }
 
     /// Gets the corresponding type mode of a column type.
-    fn get_type_mode(&self) -> i64 {
+    pub fn get_type_mode(&self) -> i64 {
         return match self {
             Self::Primitive(_) => 0,
             Self::SingleSelectDropdown(_) => 1,
