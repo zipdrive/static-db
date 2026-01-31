@@ -23,9 +23,15 @@ export type TableColumnMetadata = {
     isPrimaryKey: boolean,
 };
 
+export type DropdownValue = {
+    trueValue: string | null,
+    displayValue: string | null
+};
+
 export type TableColumnCell = {
     columnOid: number, 
     columnType: ColumnType, 
+    trueValue: string | null,
     displayValue: string | null,
     failedValidations: { description: string }[]
 };
@@ -48,6 +54,12 @@ export type Query = {
     invokeAction: 'get_table_column',
     invokeParams: {
         columnOid: number
+    }
+} | {
+    invokeAction: 'get_table_column_dropdown_values',
+    invokeParams: {
+        columnOid: number,
+        dropdownValueChannel: Channel<DropdownValue>
     }
 } | {
     invokeAction: 'get_table_column_list',
@@ -91,18 +103,15 @@ export type Dialog = {
 };
 
 export type Action = {
-    invokeAction: 'create_table',
-    invokeParams: {
+    createTable: {
         name: string
     }
 } | {
-    invokeAction: 'delete_table',
-    invokeParams: {
+    deleteTable: {
         tableOid: number
     }
 } | {
-    invokeAction: 'create_table_column',
-    invokeParams: {
+    createTableColumn: {
         tableOid: number,
         columnOrdering: number,
         columnName: string,
@@ -113,8 +122,7 @@ export type Action = {
         isPrimaryKey: boolean
     }
 } | {
-    invokeAction: 'edit_table_column',
-    invokeParams: {
+    editTableColumnMetadata: {
         tableOid: number,
         columnOid: number,
         columnName: string,
@@ -125,31 +133,32 @@ export type Action = {
         isPrimaryKey: boolean
     }
 } | {
-    invokeAction: 'delete_table_column',
-    invokeParams: {
+    editTableColumnDropdownValues: {
+        tableOid: number,
+        columnOid: number,
+        dropdownValues: DropdownValue[]
+    }
+} | {
+    deleteTableColumn: {
         tableOid: number,
         columnOid: number
     }
 } | {
-    invokeAction: 'push_row',
-    invokeParams: {
+    pushTableRow: {
         tableOid: number
     }
 } | {
-    invokeAction: 'insert_row',
-    invokeParams: {
+    insertTableRow: {
         tableOid: number,
         rowOid: number
     }
 } | {
-    invokeAction: 'delete_row',
-    invokeParams: {
+    deleteTableRow: {
         tableOid: number,
         rowOid: number
     }
 } | {
-    invokeAction: 'try_update_primitive_value',
-    invokeParams: {
+    updateTableCellStoredAsPrimitiveValue: {
         tableOid: number,
         rowOid: number,
         columnOid: number,
@@ -214,7 +223,7 @@ let redoStack: Action[] = [];
 export async function executeAsync(action: Action): Promise<void> {
     historyStack.push(action);
     redoStack = [];
-    return await invoke(action.invokeAction, action.invokeParams);
+    return await invoke('execute', action);
 }
 
 /**

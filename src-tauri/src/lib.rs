@@ -10,27 +10,22 @@ pub fn run() {
             backend::init,
             backend::dialog_close,
             backend::dialog_create_table,
-            backend::create_table,
-            backend::get_table_list,
             backend::dialog_create_table_column,
-            backend::create_table_column,
             backend::dialog_edit_table_column,
-            backend::edit_table_column,
+            backend::get_table_list,
             backend::get_table_column,
             backend::get_table_column_list,
-            backend::push_row,
-            backend::insert_row,
-            backend::delete_row,
-            backend::try_update_primitive_value,
             backend::get_table_data,
             backend::get_table_row,
-            backend::undo
+            backend::execute,
+            backend::undo,
+            backend::redo,
         ])
         .on_window_event(|window, event| {
             match event {
                 tauri::WindowEvent::CloseRequested { api, .. } => {
                     if window.label() == "main" {
-                        backend::close();
+                        // TODO show save popup?
                     }
                 },
                 _ => {}

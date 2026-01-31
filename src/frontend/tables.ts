@@ -67,18 +67,18 @@ let currentTableOid: number = NaN;
  * @param tableBodyNode 
  * @param rowOid 
  */
-function addRowToTable(tableBodyNode: HTMLElement, rowOid: number): HTMLTableRowElement {
+function addRowToTable(tableBodyNode: HTMLElement, rowOid: number, rowIndex: number): HTMLTableRowElement {
   let tableRowNode: HTMLTableRowElement = document.createElement('tr');
   tableRowNode.id = `table-content-row-${rowOid}`;
-  let tableRowOidNode = document.createElement('td');
-  tableRowOidNode.style.textAlign = 'center';
-  tableRowOidNode.style.padding = '2px 6px';
-  tableRowOidNode.innerText = rowOid.toString();
-  tableRowNode.insertAdjacentElement('beforeend', tableRowOidNode);
+  let tableRowIndexNode = document.createElement('td');
+  tableRowIndexNode.style.textAlign = 'center';
+  tableRowIndexNode.style.padding = '2px 6px';
+  tableRowIndexNode.innerText = rowIndex.toString();
+  tableRowNode.insertAdjacentElement('beforeend', tableRowIndexNode);
   tableBodyNode?.insertAdjacentElement('beforeend', tableRowNode);
 
   // Add listener to pull up context menu
-  tableRowOidNode.addEventListener('contextmenu', async (e) => {
+  tableRowIndexNode.addEventListener('contextmenu', async (e) => {
     e.preventDefault();
     e.returnValue = false;
 
@@ -87,8 +87,7 @@ function addRowToTable(tableBodyNode: HTMLElement, rowOid: number): HTMLTableRow
         text: 'Insert New Row',
         action: async () => {
           await executeAsync({
-            invokeAction: 'insert_row', 
-            invokeParams: {
+            insertTableRow: {
               tableOid: currentTableOid,
               rowOid: rowOid
             }
@@ -105,8 +104,7 @@ function addRowToTable(tableBodyNode: HTMLElement, rowOid: number): HTMLTableRow
         text: 'Delete Row',
         action: async () => {
           await executeAsync({
-            invokeAction: 'delete_row',
-            invokeParams: {
+            deleteTableRow: {
               tableOid: currentTableOid,
               rowOid: rowOid
             }
@@ -205,8 +203,7 @@ export async function displayTableAsync(tableOid: number) {
             text: 'Delete Column',
             action: async () => {
               await executeAsync({
-                invokeAction: 'delete_table_column',
-                invokeParams: {
+                deleteTableColumn: {
                   tableOid: tableOid,
                   columnOid: columnOid
                 }
@@ -265,8 +262,7 @@ export async function displayTableAsync(tableOid: number) {
   // Set what it should do on click
   tableFooterCellNode.addEventListener('click', async (_) => {
     await executeAsync({
-      invokeAction: 'push_row', 
-      invokeParams: {
+      pushTableRow: {
         tableOid: tableOid 
       }
     })
@@ -280,6 +276,7 @@ export async function displayTableAsync(tableOid: number) {
   tableFooterRowNode?.insertAdjacentElement('beforeend', tableFooterCellNode);
 
   // Set up a channel to populate the rows of the table
+  let rowIndex: number = 1;
   let rowOids: number[] = [];
   const onReceiveCell = new Channel<TableCellChannelPacket>();
   let currentRowNode: HTMLTableRowElement | null = null;
@@ -288,8 +285,10 @@ export async function displayTableAsync(tableOid: number) {
       // New row
       const rowOid = cell.rowOid;
       rowOids.push(rowOid);
-      if (tableBodyNode)
-        currentRowNode = addRowToTable(tableBodyNode, rowOid);
+      if (tableBodyNode) {
+        currentRowNode = addRowToTable(tableBodyNode, rowOid, rowIndex);
+        rowIndex += 1;
+      }
     } else {
       // Add cell to current row
       if (currentRowNode != null) {
@@ -338,7 +337,7 @@ export async function updateRowAsync(tableOid: number, rowOid: number) {
           let tableBodyNode: HTMLElement | null = document.querySelector('#table-content > tbody');
           if (tableBodyNode) {
             // Insert new row at end of table
-            tableRowNode = addRowToTable(tableBodyNode, rowOid);
+            tableRowNode = addRowToTable(tableBodyNode, rowOid, Infinity);
 
             // Rearrange rows so that it is in the correct position
             // TODO

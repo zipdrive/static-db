@@ -13,33 +13,62 @@ use crate::util::error;
 
 /// Creates a new table.
 pub fn create(name: String) -> Result<i64, error::Error> {
-    let action = db::begin_db_action()?;
-    action.trans.execute("INSERT INTO METADATA_TABLE_COLUMN_TYPE (MODE) VALUES (3);", [])?;
-    let table_oid: i64 = action.trans.last_insert_rowid();
-    action.trans.execute(
+    let mut conn = db::open()?;
+    let trans = conn.transaction()?;
+    trans.execute("INSERT INTO METADATA_TABLE_COLUMN_TYPE (MODE) VALUES (3);", [])?;
+    let table_oid: i64 = trans.last_insert_rowid();
+    trans.execute(
         "INSERT INTO METADATA_TABLE (OID, NAME) VALUES (?1, ?2);",
         params![table_oid, &name]
     )?;
-    let create_table_cmd: String = format!("CREATE TABLE TABLE{} (OID INTEGER PRIMARY KEY) STRICT;", table_oid);
-    action.trans.execute(&create_table_cmd, [])?;
-    let create_view_cmd = format!("CREATE VIEW TABLE{table_oid}_SURROGATE (OID, DISPLAY_VALUE) AS SELECT OID, OID FROM TABLE{table_oid};");
-    action.trans.execute(&create_view_cmd, [])?;
+    let create_table_cmd: String = format!("CREATE TABLE TABLE{} (OID INTEGER PRIMARY KEY, TRASH TINYINT NOT NULL DEFAULT 0) STRICT;", table_oid);
+    trans.execute(&create_table_cmd, [])?;
+    let create_view_cmd = format!("CREATE VIEW TABLE{table_oid}_SURROGATE (OID, DISPLAY_VALUE) AS SELECT OID, CASE WHEN TRASH = 0 THEN OID ELSE '— DELETED —' END AS DISPLAY_VALUE FROM TABLE{table_oid};");
+    trans.execute(&create_view_cmd, [])?;
     return Ok(table_oid);
 }
 
-// Deletes the table with the given OID and all associated local columns.
+/// Flags a table as trash.
+pub fn move_trash(table_oid: i64) -> Result<(), error::Error> {
+    let mut conn = db::open()?;
+    let trans = conn.transaction()?;
+
+    // Flag the table as trash
+    trans.execute("UPDATE METADATA_TABLE SET TRASH = 1 WHERE OID = ?1;", params![table_oid])?;
+
+    // Commit and return
+    trans.commit()?;
+    return Ok(());
+}
+
+/// Unflags a table as trash.
+pub fn unmove_trash(table_oid: i64) -> Result<(), error::Error> {
+    let mut conn = db::open()?;
+    let trans = conn.transaction()?;
+
+    // Flag the table as trash
+    trans.execute("UPDATE METADATA_TABLE SET TRASH = 0 WHERE OID = ?1;", params![table_oid])?;
+
+    // Commit and return
+    trans.commit()?;
+    return Ok(());
+}
+
+/// Deletes the table with the given OID and all associated local columns.
+/// Generally, this function should only be called after the table has been flagged as trash for reasonably long enough that the user could undo it if they wanted to.
 pub fn delete(oid: i64) -> Result<(), error::Error> {
-    let action = db::begin_db_action()?;
+    let mut conn = db::open()?;
+    let trans = conn.transaction()?;
 
     // Drop data from the table
     let drop_cmd: String = format!("DROP TABLE TABLE{};", oid);
-    action.trans.execute(&drop_cmd, [])?;
+    trans.execute(&drop_cmd, [])?;
 
     // Drop tables associated locally with the table
-
+    // TODO
 
     // Finally, drop the table's metadata
-    action.trans.execute("DELETE FROM METADATA_TABLE_COLUMN_TYPE WHERE OID = ?1;", [oid])?;
+    trans.execute("DELETE FROM METADATA_TABLE_COLUMN_TYPE WHERE OID = ?1;", [oid])?;
     return Ok(());
 }
 
@@ -54,9 +83,16 @@ pub struct BasicMetadata {
 
 /// Sends a list of tables through the provided channel.
 pub fn send_metadata_list(table_channel: Channel<BasicMetadata>) -> Result<(), error::Error> {
-    let action = db::begin_readonly_db_action()?;
+    let mut conn = db::open()?;
+    let trans = conn.transaction()?;
 
-    action.query_iterate("SELECT OID, NAME FROM METADATA_TABLE ORDER BY NAME ASC;", [], 
+    db::query_iterate(&trans, 
+        "SELECT 
+            OID, 
+            NAME 
+        FROM METADATA_TABLE 
+        WHERE TRASH = 0 
+        ORDER BY NAME ASC;", [], 
         &mut |row| {
             table_channel.send(BasicMetadata {  
                 oid: row.get::<_, i64>(0)?,

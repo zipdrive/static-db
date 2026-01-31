@@ -1,0 +1,267 @@
+use rusqlite::{Transaction, params};
+use serde::{Serialize, Deserialize};
+use crate::backend::{db};
+use crate::util::error;
+
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
+pub enum Primitive {
+    Any,        // Mode = 0 && OID = 0
+    Boolean,    // Mode = 0 && OID = 1
+    Integer,    // Mode = 0 && OID = 2
+    Number,     // Mode = 0 && OID = 3
+    Date,       // Mode = 0 && OID = 4
+    Timestamp,  // Mode = 0 && OID = 5
+    Text,       // Mode = 0 && OID = 6
+    JSON,       // Mode = 0 && OID = 7
+    File,       // Mode = 0 && OID = 8
+    Image,      // Mode = 0 && OID = 9
+}
+
+impl Primitive {
+    /// Gets the corresponding SQLite column type for a given primitive type.
+    pub fn get_sqlite_type(&self) -> &'static str {
+        return match self {
+            Self::Any => "ANY",
+            Self::Boolean => "TINYINT",
+            Self::Integer => "INTEGER",
+            Self::Number => "FLOAT",
+            Self::Date => "DATE",
+            Self::Timestamp => "TIMESTAMP",
+            Self::Text | Self::JSON => "TEXT",
+            Self::File | Self::Image => "BLOB",
+        }
+    }
+
+    /// Gets the corresponding type OID of a given primitive type.
+    pub fn get_type_oid(&self) -> i64 {
+        match self {
+            Self::Any => 0,
+            Self::Boolean => 1,
+            Self::Integer => 2,
+            Self::Number => 3,
+            Self::Date => 4,
+            Self::Timestamp => 5,
+            Self::Text => 6,
+            Self::JSON => 7,
+            Self::File => 8,
+            Self::Image => 9,
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone, PartialEq)]
+#[serde(rename_all="camelCase", rename_all_fields="camelCase")]
+pub enum MetadataColumnType {
+    Primitive(Primitive),          // Mode = 0
+    SingleSelectDropdown(i64),     // Mode = 1
+    MultiSelectDropdown(i64),      // Mode = 2
+    Reference(i64),                // Mode = 3
+    ChildObject(i64),              // Mode = 4
+    ChildTable(i64),               // Mode = 5
+}
+
+impl MetadataColumnType {
+    /// Converts a type from the database OID and mode.
+    pub fn from_database(type_oid: i64, type_mode: i64) -> MetadataColumnType {
+        match type_mode {
+            0 => {
+                match type_oid {
+                    1 => { return Self::Primitive(Primitive::Boolean); },
+                    2 => { return Self::Primitive(Primitive::Integer); },
+                    3 => { return Self::Primitive(Primitive::Number); },
+                    4 => { return Self::Primitive(Primitive::Date); },
+                    5 => { return Self::Primitive(Primitive::Timestamp); },
+                    6 => { return Self::Primitive(Primitive::Text); },
+                    7 => { return Self::Primitive(Primitive::JSON); },
+                    8 => { return Self::Primitive(Primitive::File); },
+                    9 => { return Self::Primitive(Primitive::Image); },
+                    _ => {
+                        return Self::Primitive(Primitive::Any);
+                    }
+                }
+            },
+            1 => { return Self::SingleSelectDropdown(type_oid); },
+            2 => { return Self::MultiSelectDropdown(type_oid); },
+            3 => { return Self::Reference(type_oid); },
+            4 => { return Self::ChildObject(type_oid); },
+            5 => { return Self::ChildTable(type_oid); },
+            _ => {
+                return Self::Primitive(Primitive::Any);
+            }
+        }
+    }
+
+    /// Gets the corresponding type OID of a column type.
+    pub fn get_type_oid(&self) -> i64 {
+        return match self {
+            Self::Primitive(prim) => prim.get_type_oid(),
+            Self::SingleSelectDropdown(type_oid) 
+            | Self::MultiSelectDropdown(type_oid)
+            | Self::Reference(type_oid)
+            | Self::ChildObject(type_oid)
+            | Self::ChildTable(type_oid) => type_oid.clone()
+        }
+    }
+
+    /// Gets the corresponding type mode of a column type.
+    fn get_type_mode(&self) -> i64 {
+        return match self {
+            Self::Primitive(_) => 0,
+            Self::SingleSelectDropdown(_) => 1,
+            Self::MultiSelectDropdown(_) => 2,
+            Self::Reference(_) => 3,
+            Self::ChildObject(_) => 4,
+            Self::ChildTable(_) => 5
+        }
+    }
+
+    /// If the type is unique to a specific table (i.e. single-select dropdown, multi-select dropdown, child table), creates rows/tables for the specified type.
+    /// Returns the OID for the type.
+    pub fn create_for_table(self, trans: &Transaction, table_oid: &i64) -> Result<Self, error::Error> {
+        match self {
+            Self::Primitive(_)
+            | Self::Reference(_)
+            | Self::ChildObject(_) => {
+                return Ok(self);
+            },
+            Self::SingleSelectDropdown(_) => {
+                // Create the column type, use that as the OID for the type
+                trans.execute(
+                    "INSERT INTO METADATA_TABLE_COLUMN_TYPE (MODE) VALUES (?1);", 
+                    params![self.get_type_mode()]
+                )?;
+                let column_type_oid = trans.last_insert_rowid();
+
+                // Create table to store dropdown values
+                let create_table_cmd = format!("CREATE TABLE TABLE{column_type_oid} (OID INTEGER PRIMARY KEY, TRASH TINYINT NOT NULL DEFAULT 0, VALUE TEXT NOT NULL);");
+                trans.execute(&create_table_cmd, [])?;
+
+                // Return the OID of the created type
+                return Ok(Self::SingleSelectDropdown(column_type_oid));
+            },
+            Self::MultiSelectDropdown(_) => {
+                // Create the column type, use that as the OID for the type
+                trans.execute(
+                    "INSERT INTO METADATA_TABLE_COLUMN_TYPE (MODE) VALUES (?1);", 
+                    params![self.get_type_mode()]
+                )?;
+                let column_type_oid = trans.last_insert_rowid();
+
+                // Create table to store dropdown values
+                let create_table_cmd = format!("CREATE TABLE TABLE{column_type_oid} (OID INTEGER PRIMARY KEY, TRASH TINYINT NOT NULL DEFAULT 0, VALUE TEXT NOT NULL);");
+                trans.execute(&create_table_cmd, [])?;
+
+                // Create table to store relationship with base table
+                let create_relationship_cmd = format!("
+                CREATE TABLE TABLE{column_type_oid}_MULTISELECT (
+                    ROW_OID INTEGER REFERENCES TABLE{table_oid} (OID) 
+                        ON UPDATE CASCADE 
+                        ON DELETE CASCADE, 
+                    VALUE_OID INTEGER REFERENCES TABLE{column_type_oid} (OID) 
+                        ON UPDATE CASCADE 
+                        ON DELETE CASCADE, 
+                    PRIMARY KEY (ROW_OID, VALUE_OID)
+                );");
+                trans.execute(&create_relationship_cmd, [])?;
+
+                // Return the OID of the created type
+                return Ok(Self::MultiSelectDropdown(column_type_oid));
+            },
+            Self::ChildTable(_) => {
+                // Create the column type, use that as the OID for the type
+                trans.execute(
+                    "INSERT INTO METADATA_TABLE_COLUMN_TYPE (MODE) VALUES (?1);", 
+                    params![self.get_type_mode()]
+                )?;
+                let column_type_oid = trans.last_insert_rowid();
+
+                // Add metadata for the child table
+                let child_table_name: String = format!("TABLE{column_type_oid}");
+                trans.execute(
+                    "INSERT INTO METADATA_TABLE (OID, PARENT_TABLE_OID, NAME) VALUES (?1, ?2, ?3);", 
+                    params![column_type_oid, table_oid, &child_table_name]
+                )?;
+
+                // Create the child table
+                let create_table_cmd = format!("
+                CREATE TABLE TABLE{column_type_oid} (
+                    OID INTEGER PRIMARY KEY, 
+                    TRASH TINYINT NOT NULL DEFAULT 0,
+                    PARENT_OID INTEGER NOT NULL REFERENCES TABLE{table_oid} (OID)
+                );");
+                trans.execute(&create_table_cmd, [])?;
+
+                // Create a surrogate view for the child table
+                let create_view_cmd = format!("
+                CREATE VIEW TABLE{column_type_oid}_SURROGATE (OID, DISPLAY_VALUE) 
+                AS 
+                SELECT 
+                    OID, 
+                    CAST(OID AS TEXT) AS DISPLAY_VALUE
+                FROM TABLE{column_type_oid};");
+                trans.execute(&create_view_cmd, [])?;
+
+                // Return the OID of the created type
+                return Ok(Self::ChildTable(column_type_oid));
+            }
+        }
+    }
+
+    /// If the type is unique to a specific table (i.e. single-select dropdown, multi-select dropdown, child table), deletes the type and any associated rows/tables.
+    pub fn delete_for_table(self, trans: &Transaction) -> Result<(), error::Error> {
+        match self {
+            Self::Primitive(_)
+            | Self::Reference(_)
+            | Self::ChildObject(_) => {
+                return Ok(());
+            },
+            Self::SingleSelectDropdown(column_type_oid) => {
+                // Drop the dropdown values table
+                let drop_cmd = format!("DROP TABLE TABLE{column_type_oid};");
+                trans.execute(&drop_cmd, [])?;
+
+                // Delete the dropdown type from the metadata
+                trans.execute(
+                    "DELETE FROM METADATA_TABLE_COLUMN_TYPE WHERE OID = ?1", 
+                    params![column_type_oid]
+                )?;
+
+                return Ok(());
+            },
+            Self::MultiSelectDropdown(column_type_oid) => {
+                // Drop the relationship table
+                let drop_relationship_cmd = format!("DROP TABLE TABLE{column_type_oid}_MULTISELECT;");
+                trans.execute(&drop_relationship_cmd, [])?;
+
+                // Drop the dropdown values table
+                let drop_values_cmd = format!("DROP TABLE TABLE{column_type_oid};");
+                trans.execute(&drop_values_cmd, [])?;
+
+                // Delete the dropdown value table from the metadata
+                trans.execute(
+                    "DELETE FROM METADATA_TABLE_COLUMN_TYPE WHERE OID = ?1", 
+                    params![column_type_oid]
+                )?;
+
+                return Ok(());
+            },
+            Self::ChildTable(column_type_oid) => {
+                // Drop the surrogate view
+                let drop_view_cmd = format!("DROP VIEW TABLE{column_type_oid}_SURROGATE;");
+                trans.execute(&drop_view_cmd, [])?;
+
+                // Drop the child table
+                let drop_table_cmd = format!("DROP TABLE TABLE{column_type_oid};");
+                trans.execute(&drop_table_cmd, [])?;
+
+                // Delete the metadata for the child type, which will cascade to delete the metadata for the child table
+                trans.execute(
+                    "DELETE FROM METADATA_TABLE_COLUMN_TYPE WHERE OID = ?1", 
+                    params![column_type_oid]
+                )?;
+
+                return Ok(());
+            }
+        }
+    }
+}

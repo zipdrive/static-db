@@ -1,6 +1,7 @@
 import { Menu, MenuItem } from "@tauri-apps/api/menu";
 import { message } from "@tauri-apps/plugin-dialog";
-import { TableColumnCell, executeAsync } from './backendutils';
+import { DropdownValue, TableColumnCell, executeAsync, queryAsync } from './backendutils';
+import { Channel } from "@tauri-apps/api/core";
 
 
 /**
@@ -10,7 +11,7 @@ import { TableColumnCell, executeAsync } from './backendutils';
  * @param rowOid The OID of the row of the table that the cell belongs to.
  * @param cell Information about the cell itself.
  */
-export function addTableColumnCellToRow(rowNode: HTMLTableRowElement, tableOid: number, rowOid: number, cell: TableColumnCell) {
+export async function addTableColumnCellToRow(rowNode: HTMLTableRowElement, tableOid: number, rowOid: number, cell: TableColumnCell) {
   const columnOid = cell.columnOid;
 
   // Insert cell node
@@ -39,8 +40,7 @@ export function addTableColumnCellToRow(rowNode: HTMLTableRowElement, tableOid: 
           const newPrimitiveValue = editableDivNode.innerText.trimEnd();
 
           await executeAsync({
-            invokeAction: 'try_update_primitive_value',
-            invokeParams: {
+            updateTableCellStoredAsPrimitiveValue: {
               tableOid: tableOid,
               rowOid: rowOid,
               columnOid: columnOid,
@@ -76,11 +76,54 @@ export function addTableColumnCellToRow(rowNode: HTMLTableRowElement, tableOid: 
         break;
       }
     }
-  } else if ('singleSelectDropdown' in cell.columnType) {
-    // TODO
+  } else if ('singleSelectDropdown' in cell.columnType || 'reference' in cell.columnType) {
+    let selectNode: HTMLSelectElement = document.createElement('select');
+
+    // Retrieve dropdown values from database to populate dropdown
+    const onReceiveDropdownValue = new Channel<DropdownValue>();
+    onReceiveDropdownValue.onmessage = (dropdownValue) => {
+      let optionNode: HTMLOptionElement = document.createElement('option');
+      optionNode.value = dropdownValue.trueValue ?? '';
+      optionNode.innerText = dropdownValue.displayValue ?? '';
+      selectNode.insertAdjacentElement('beforeend', optionNode);
+    };
+    await queryAsync({
+      invokeAction: 'get_table_column_dropdown_values',
+      invokeParams: {
+        columnOid: columnOid,
+        dropdownValueChannel: onReceiveDropdownValue
+      }
+    })
+    .catch(async (e) => {
+      await message(e, {
+        title: 'An error occurred while retrieving dropdown values from database.',
+        kind: 'error'
+      });
+    });
+
+    // Add event listener for when the value is changed
+    selectNode.addEventListener('change', async (_) => {
+      const newPrimitiveValue = selectNode.value;
+
+      await executeAsync({
+        updateTableCellStoredAsPrimitiveValue: {
+          tableOid: tableOid,
+          rowOid: rowOid,
+          columnOid: columnOid,
+          newPrimitiveValue: newPrimitiveValue == '' ? null : newPrimitiveValue
+        }
+      })
+      .catch(async e => {
+        await message(e, {
+          title: "Unable to update value.",
+          kind: 'warning'
+        });
+      });
+    });
+
+    // Add the select node to the cell
+    tableCellNode.insertAdjacentElement('beforeend', selectNode);
   } else if ('multiSelectDropdown' in cell.columnType) {
-    // TODO
-  } else if ('reference' in cell.columnType) {
     // TODO
   } else if ('childObject' in cell.columnType) {
     // TODO

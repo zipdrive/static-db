@@ -177,8 +177,7 @@ window.addEventListener("DOMContentLoaded", async () => {
 
                     // Edit the column
                     await executeAsync({
-                        invokeAction: "edit_table_column",
-                        invokeParams: {
+                        editTableColumnMetadata: {
                             tableOid: parseInt(tableOid),
                             columnOid: parseInt(columnOid),
                             columnName: changedMetadata.name,
@@ -189,6 +188,21 @@ window.addEventListener("DOMContentLoaded", async () => {
                             isPrimaryKey: changedMetadata.isPrimaryKey
                         }
                     });
+
+                    // Update dropdown values
+                    if ('singleSelectDropdown' in changedMetadata.columnType || 'multiSelectDropdown' in changedMetadata.columnType) {
+                        // Pull new list of dropdown values from form
+                        // TODO
+
+                        // Send request to update set of dropdown values
+                        await executeAsync({
+                            editTableColumnDropdownValues: {
+                                tableOid: parseInt(tableOid),
+                                columnOid: parseInt(columnOid),
+                                dropdownValues: []
+                            }
+                        });
+                    }
                 })
                 .then(async (_) => await closeDialogAsync())
                 .catch(async (e) => {
@@ -218,8 +232,7 @@ window.addEventListener("DOMContentLoaded", async () => {
             // Create the column
             await loadMetadataFromFields()
             .then(async (metadata) => await executeAsync({
-                invokeAction: "create_table_column",
-                invokeParams: {
+                createTableColumn: {
                     tableOid: parseInt(tableOid),
                     columnName: metadata.name,
                     columnType: metadata.columnType,
