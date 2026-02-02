@@ -37,7 +37,8 @@ export type TableColumnCell = {
 };
 
 export type TableCellChannelPacket = {
-    rowOid: number
+    rowOid: number,
+    rowIndex: number
 } | TableColumnCell;
 
 export type TableRowCellChannelPacket = {
@@ -81,6 +82,8 @@ export type Query = {
     invokeAction: 'get_table_data',
     invokeParams: {
         tableOid: number,
+        pageNum: number,
+        pageSize: number,
         cellChannel: Channel<TableCellChannelPacket>
     }
 } | {

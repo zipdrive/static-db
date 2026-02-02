@@ -211,6 +211,7 @@ body {
 
 #table-content {
   table-layout: fixed;
+  width: 0;
   border: var(--main-color-dark) 1px solid;
   border-top: none;
   border-right: none;
@@ -244,6 +245,7 @@ body {
 
 #table-content #add-new-column-button {
   cursor: pointer;
+  width: 8em;
   color: var(--text-color-link);
   border: none;
   background-color: transparent;

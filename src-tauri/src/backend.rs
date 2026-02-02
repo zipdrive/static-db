@@ -246,7 +246,7 @@ impl Action {
                 }
             },
             Self::DeleteTableColumn { table_oid, column_oid } => {
-                match column::move_trash(column_oid.clone()) {
+                match column::move_trash(table_oid.clone(), column_oid.clone()) {
                     Ok(_) => {
                         let mut reverse_stack = if is_forward {
                             REVERSE_STACK.lock().unwrap() 
@@ -265,7 +265,7 @@ impl Action {
                 }
             },
             Self::RestoreDeletedTableColumn { table_oid, column_oid } => {
-                match column::unmove_trash(column_oid.clone()) {
+                match column::unmove_trash(table_oid.clone(), column_oid.clone()) {
                     Ok(_) => {
                         let mut reverse_stack = if is_forward {
                             REVERSE_STACK.lock().unwrap() 
@@ -321,8 +321,45 @@ impl Action {
                     }
                 }
             },
+            Self::DeleteTableRow { table_oid, row_oid } => {
+                match data::move_trash(table_oid.clone(), row_oid.clone()) {
+                    Ok(_) => {
+                        let mut reverse_stack = if is_forward {
+                            REVERSE_STACK.lock().unwrap() 
+                        } else { 
+                            FORWARD_STACK.lock().unwrap() 
+                        };
+                        (*reverse_stack).push(Self::RestoreDeletedTableRow { 
+                            table_oid: table_oid.clone(),
+                            row_oid: row_oid.clone() 
+                        });
+                        msg_update_table_data(app, table_oid.clone());
+                    },
+                    Err(e) => {
+                        return Err(e);
+                    }
+                }
+            },
+            Self::RestoreDeletedTableRow { table_oid, row_oid } => {
+                match data::unmove_trash(table_oid.clone(), row_oid.clone()) {
+                    Ok(_) => {
+                        let mut reverse_stack = if is_forward {
+                            REVERSE_STACK.lock().unwrap() 
+                        } else { 
+                            FORWARD_STACK.lock().unwrap() 
+                        };
+                        (*reverse_stack).push(Self::DeleteTableRow { 
+                            table_oid: table_oid.clone(),
+                            row_oid: row_oid.clone() 
+                        });
+                        msg_update_table_data(app, table_oid.clone());
+                    },
+                    Err(e) => {
+                        return Err(e);
+                    }
+                }
+            },
             Self::UpdateTableCellStoredAsPrimitiveValue { table_oid, column_oid, row_oid, value } => {
-                println!("Updating value to {value:?}");
                 match data::try_update_primitive_value(table_oid.clone(), row_oid.clone(), column_oid.clone(), value.clone()) {
                     Ok(old_value) => {
                         let mut reverse_stack = if is_forward {

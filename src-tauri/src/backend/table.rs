@@ -100,42 +100,42 @@ pub fn update_surrogate_view(trans: &Transaction, table_oid: i64) -> Result<(), 
                         | column_type::Primitive::Number
                         | column_type::Primitive::Text
                         | column_type::Primitive::JSON => {
-                            select_col = format!("CAST(t.COLUMN{column_oid} AS TEXT) AS COLUMN{column_oid}");
+                            select_col = format!("CAST(t.COLUMN{column_oid} AS TEXT)");
                         },
                         column_type::Primitive::Date => {
-                            select_col = format!("DATE(t.COLUMN{column_oid}) AS COLUMN{column_oid}");
+                            select_col = format!("DATE(t.COLUMN{column_oid})");
                         },
                         column_type::Primitive::Timestamp => {
-                            select_col = format!("DATETIME(t.COLUMN{column_oid}) AS COLUMN{column_oid}");
+                            select_col = format!("DATETIME(t.COLUMN{column_oid})");
                         },
                         column_type::Primitive::File => {
-                            select_col = format!("CASE WHEN t.COLUMN{column_oid} IS NULL THEN NULL ELSE 'File' END AS COLUMN{column_oid}");
+                            select_col = format!("CASE WHEN t.COLUMN{column_oid} IS NULL THEN NULL ELSE 'File' END");
                         },
                         column_type::Primitive::Image => {
-                            select_col = format!("CASE WHEN t.COLUMN{column_oid} IS NULL THEN NULL ELSE 'Thumbnail' END AS COLUMN{column_oid}");
+                            select_col = format!("CASE WHEN t.COLUMN{column_oid} IS NULL THEN NULL ELSE 'Thumbnail' END");
                         }
                     }
                 },
                 column_type::MetadataColumnType::SingleSelectDropdown(column_type_oid) => {
-                    select_col = format!("t{tbl_count}.VALUE AS COLUMN{column_oid}");
+                    select_col = format!("t{tbl_count}.VALUE");
                     select_tbls_cmd = format!("{select_tbls_cmd} LEFT JOIN TABLE{column_type_oid} t{tbl_count} ON t{tbl_count}.OID = t.COLUMN{column_oid}");
                     tbl_count += 1;
                 },
                 column_type::MetadataColumnType::MultiSelectDropdown(column_type_oid) => {
-                    select_col = format!("(SELECT '[' || GROUP_CONCAT(b.VALUE) || ']' FROM TABLE{column_type_oid}_MULTISELECT a INNER JOIN TABLE{column_type_oid} b ON b.OID = a.VALUE_OID WHERE a.ROW_OID = t.OID GROUP BY a.ROW_OID) AS COLUMN{column_oid}");
+                    select_col = format!("(SELECT '[' || GROUP_CONCAT(b.VALUE) || ']' FROM TABLE{column_type_oid}_MULTISELECT a INNER JOIN TABLE{column_type_oid} b ON b.OID = a.VALUE_OID WHERE a.ROW_OID = t.OID GROUP BY a.ROW_OID)");
                 },
                 column_type::MetadataColumnType::Reference(referenced_table_oid) 
                 | column_type::MetadataColumnType::ChildObject(referenced_table_oid) => {
-                    select_col = format!("t{tbl_count}.DISPLAY_VALUE AS COLUMN{column_oid}");
+                    select_col = format!("COALESCE(t{tbl_count}.DISPLAY_VALUE, CASE WHEN t.COLUMN{column_oid} IS NOT NULL THEN '— DELETED —' ELSE NULL END)");
                     select_tbls_cmd = format!("{select_tbls_cmd} LEFT JOIN TABLE{referenced_table_oid}_SURROGATE t{tbl_count} ON t{tbl_count}.OID = t.COLUMN{column_oid}");
                     tbl_count += 1;
                 },
                 column_type::MetadataColumnType::ChildTable(column_type_oid) => {
-                    select_col = format!("(SELECT '[' || GROUP_CONCAT(a.DISPLAY_VALUE) || ']' FROM TABLE{column_type_oid}_SURROGATE a WHERE a.PARENT_OID = t.OID GROUP BY a.PARENT_OID) AS COLUMN{column_oid}");
+                    select_col = format!("(SELECT '[' || GROUP_CONCAT(a.DISPLAY_VALUE) || ']' FROM TABLE{column_type_oid}_SURROGATE a WHERE a.PARENT_OID = t.OID GROUP BY a.PARENT_OID)");
                 }
             }
 
-            select_cols_cmd = format!("{select_cols_cmd}, {select_col}");
+            select_cols_cmd = format!("{select_cols_cmd}, {select_col} AS COLUMN{column_oid}");
             if row.get::<_, bool>(3)? {
                 select_display_value.push(select_col.clone());
             }
@@ -170,13 +170,19 @@ pub fn update_surrogate_view(trans: &Transaction, table_oid: i64) -> Result<(), 
         select_cols_cmd = format!("ROW_NUMBER() OVER (ORDER BY t.OID) AS ROW_INDEX, {select_cols_cmd}");
     }
 
+    // Drop any existing surrogate view
+    let drop_view_cmd: String = format!("DROP VIEW IF EXISTS TABLE{table_oid}_SURROGATE");
+    trans.execute(&drop_view_cmd, [])?;
+    
+    // Create the new surrogate view
     let create_view_cmd: String = format!("
         CREATE VIEW TABLE{table_oid}_SURROGATE 
         AS 
         SELECT
             {select_cols_cmd} 
-            , CASE WHEN t.TRASH = 0 THEN {} ELSE '— DELETED —' END AS DISPLAY_VALUE
+            , {} AS DISPLAY_VALUE
         {select_tbls_cmd}
+        WHERE t.TRASH = 0
         {select_order_cmd}",
 
         if select_display_value.len() > 1 {
@@ -184,9 +190,10 @@ pub fn update_surrogate_view(trans: &Transaction, table_oid: i64) -> Result<(), 
         } else if select_display_value.len() == 1 {
             select_display_value[0].clone()
         } else {
-            String::from("— NO PRIMARY KEY —")
+            String::from("'— NO PRIMARY KEY —'")
         }
     );
+    println!("{}", create_view_cmd);
     trans.execute(&create_view_cmd, params![])?;
     return Ok(());
 }

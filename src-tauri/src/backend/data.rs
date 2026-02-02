@@ -120,6 +120,34 @@ pub fn push(table_oid: i64) -> Result<i64, error::Error> {
     return Ok(row_oid);
 }
 
+/// Marks a row as trash.
+pub fn move_trash(table_oid: i64, row_oid: i64) -> Result<(), error::Error> {
+    let mut conn = db::open()?;
+    let trans = conn.transaction()?;
+
+    // Move the row to the trash bin
+    let update_cmd = format!("UPDATE TABLE{table_oid} SET TRASH = 1 WHERE OID = ?1;");
+    trans.execute(&update_cmd, params![row_oid])?;
+
+    // Return the row OID
+    trans.commit()?;
+    return Ok(());
+}
+
+/// Unmarks a row as trash.
+pub fn unmove_trash(table_oid: i64, row_oid: i64) -> Result<(), error::Error> {
+    let mut conn = db::open()?;
+    let trans = conn.transaction()?;
+
+    // Move the row to the trash bin
+    let update_cmd = format!("UPDATE TABLE{table_oid} SET TRASH = 0 WHERE OID = ?1;");
+    trans.execute(&update_cmd, params![row_oid])?;
+
+    // Return the row OID
+    trans.commit()?;
+    return Ok(());
+}
+
 /// Delete the row with the given OID.
 pub fn delete(table_oid: i64, row_oid: i64) -> Result<(), error::Error> {
     let mut conn = db::open()?;
@@ -155,7 +183,6 @@ pub fn try_update_primitive_value(table_oid: i64, row_oid: i64, column_oid: i64,
 
     // Return OK
     trans.commit()?;
-    println!("Updated value from {prev_value:?} to {new_value:?}");
     return Ok(prev_value);
 }
 

@@ -35,10 +35,47 @@ export async function addTableColumnCellToRow(rowNode: HTMLTableRowElement, tabl
           editableDivNode.setAttribute('placeholder', '— NULL —');
         }
 
+        const primitiveType = cell.columnType.primitive;
+
         // Set up an event listener for when the value is changed
         editableDivNode.addEventListener('focusout', async (_) => {
-          const newPrimitiveValue = editableDivNode.innerText.trimEnd();
-          console.debug(`Updating value to "${(newPrimitiveValue == '' ? null : newPrimitiveValue)}"`);
+          let newPrimitiveValue: string | null = editableDivNode.innerText.trimEnd();
+
+          // If necessary, verify type before uploading to database
+          switch (primitiveType) {
+            case 'JSON':
+              try {
+                JSON.parse(newPrimitiveValue);
+              } catch (e) {
+                await message("Value does not conform to JSON syntax.", {
+                  title: "Unable to update value.",
+                  kind: 'warning'
+                });
+              }
+              break;
+            case 'Integer':
+              let num: number = parseFloat(newPrimitiveValue);
+              if (!isNaN(num)) {
+                newPrimitiveValue = Math.round(num).toString();
+              }
+              break;
+            case 'Date':
+              let date: number = Date.parse(newPrimitiveValue);
+              if (isNaN(date)) {
+                newPrimitiveValue = null;
+              } else {
+                newPrimitiveValue = date.toString();
+              }
+              break;
+            case 'Timestamp':
+              let timestamp: number = Date.parse(newPrimitiveValue);
+              if (isNaN(timestamp)) {
+                newPrimitiveValue = null;
+              } else {
+                newPrimitiveValue = timestamp.toString();
+              }
+              break;
+          }
 
           await executeAsync({
             updateTableCellStoredAsPrimitiveValue: {

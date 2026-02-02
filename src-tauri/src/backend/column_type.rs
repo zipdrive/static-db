@@ -22,11 +22,11 @@ impl Primitive {
     pub fn get_sqlite_type(&self) -> &'static str {
         return match self {
             Self::Any => "ANY",
-            Self::Boolean => "TINYINT",
+            Self::Boolean => "INTEGER",
             Self::Integer => "INTEGER",
-            Self::Number => "FLOAT",
-            Self::Date => "DATE",
-            Self::Timestamp => "TIMESTAMP",
+            Self::Number => "REAL",
+            Self::Date => "INTEGER",
+            Self::Timestamp => "INTEGER",
             Self::Text | Self::JSON => "TEXT",
             Self::File | Self::Image => "BLOB",
         }

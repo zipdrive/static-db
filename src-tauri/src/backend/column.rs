@@ -5,7 +5,7 @@ use rusqlite::fallible_streaming_iterator::FallibleStreamingIterator;
 use rusqlite::{params, Row, Error as RusqliteError, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use tauri::ipc::Channel;
-use crate::backend::{column_type, db};
+use crate::backend::{column_type, db, table};
 use crate::util::error;
 
 
@@ -51,6 +51,9 @@ pub fn create(table_oid: i64, column_name: &str, column_type: column_type::Metad
             let alter_table_cmd = format!("ALTER TABLE TABLE{table_oid} ADD COLUMN COLUMN{column_oid} {sqlite_type};");
             trans.execute(&alter_table_cmd, [])?;
 
+            // Update table's surrogate view
+            table::update_surrogate_view(&trans, table_oid)?;
+
             // Return the column OID
             trans.commit()?;
             return Ok(column_oid);
@@ -69,6 +72,9 @@ pub fn create(table_oid: i64, column_name: &str, column_type: column_type::Metad
             let alter_table_cmd = format!("ALTER TABLE TABLE{table_oid} ADD COLUMN COLUMN{column_oid} INTEGER REFERENCES TABLE{referenced_table_oid} (OID) ON UPDATE CASCADE ON DELETE SET DEFAULT;");
             trans.execute(&alter_table_cmd, [])?;
 
+            // Update table's surrogate view
+            table::update_surrogate_view(&trans, table_oid)?;
+
             // Return the column's OID
             trans.commit()?;
             return Ok(column_oid);
@@ -81,6 +87,9 @@ pub fn create(table_oid: i64, column_name: &str, column_type: column_type::Metad
                 params![table_oid, column_name, column_type_oid, column_ordering, column_style, is_nullable_bit, is_unique_bit, is_primary_key_bit]
             )?;
             let column_oid = trans.last_insert_rowid();
+
+            // Update table's surrogate view
+            table::update_surrogate_view(&trans, table_oid)?;
 
             // Return the column OID
             trans.commit()?;
@@ -296,6 +305,11 @@ pub fn edit(column_oid: i64, column_name: &str, column_type: column_type::Metada
                     }
                 }
             }
+
+            // Update table's surrogate view
+            table::update_surrogate_view(&trans, table_oid)?;
+
+            // Commit the changes
             trans.commit()?;
             return Ok(Some(trash_column_oid));
         },
@@ -306,12 +320,15 @@ pub fn edit(column_oid: i64, column_name: &str, column_type: column_type::Metada
 }
 
 /// Flags a column as being trash.
-pub fn move_trash(column_oid: i64) -> Result<(), error::Error> {
+pub fn move_trash(table_oid: i64, column_oid: i64) -> Result<(), error::Error> {
     let mut conn = db::open()?;
     let trans = conn.transaction()?;
 
     // Flag the table as trash
     trans.execute("UPDATE METADATA_TABLE_COLUMN SET TRASH = 1 WHERE OID = ?1;", params![column_oid])?;
+
+    // Update table's surrogate view
+    table::update_surrogate_view(&trans, table_oid)?;
 
     // Commit and return
     trans.commit()?;
@@ -319,12 +336,15 @@ pub fn move_trash(column_oid: i64) -> Result<(), error::Error> {
 }
 
 /// Unflags a column as being trash.
-pub fn unmove_trash(column_oid: i64) -> Result<(), error::Error> {
+pub fn unmove_trash(table_oid: i64, column_oid: i64) -> Result<(), error::Error> {
     let mut conn = db::open()?;
     let trans = conn.transaction()?;
 
     // Unflag the table as trash
     trans.execute("UPDATE METADATA_TABLE_COLUMN SET TRASH = 0 WHERE OID = ?1;", params![column_oid])?;
+
+    // Update table's surrogate view
+    table::update_surrogate_view(&trans, table_oid)?;
 
     // Commit and return
     trans.commit()?;
