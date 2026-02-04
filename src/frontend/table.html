@@ -3,28 +3,13 @@
   <head>
     <meta charset="UTF-8" />
     <link rel="stylesheet" href="/src/styles.css" />
+    <link rel="stylesheet" href="./table.css" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>StaticDB</title>
-    <script type="module" src="/src/frontend/main.ts" defer></script>
-    <script type="module" src="/src/frontend/tables.ts" defer></script>
+    <script type="module" src="./table.ts" defer></script>
   </head>
 
   <body>
-    <div class="top-sidebar">
-      <button id="tables-tab" class="tab">Tables</button>
-      <button id="reports-tab" class="tab">Reports</button>
-      <button id="global-types-tab" class="tab">Global Data Types</button>
-    </div>
-    <div class="left-sidebar">
-      <div class="left-sidebar-inner">
-        <div id="add-new-table-button-wrapper" style="display:flex; flex-direction:column; justify-content:center; padding-top:6px;">
-            <a id="add-new-table-button">Create New Table</a>
-        </div>
-      </div>
-    </div>
-    <form name="tables" class="container">
-      <table id="table-content">
-      </table>
-    </form>
+    <table id="table-content">
+    </table>
   </body>
 </html>

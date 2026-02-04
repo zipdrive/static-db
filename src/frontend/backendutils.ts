@@ -53,6 +53,16 @@ export type Query = {
         tableChannel: Channel<BasicMetadata>
     }
 } | {
+    invokeAction: 'get_report_list',
+    invokeParams: {
+        reportChannel: Channel<BasicMetadata>
+    }
+} | {
+    invokeAction: 'get_object_type_list',
+    invokeParams: {
+        objectTypeChannel: Channel<BasicMetadata>
+    }
+} | {
     invokeAction: 'get_table_column',
     invokeParams: {
         columnOid: number
@@ -110,6 +120,12 @@ export type Dialog = {
     invokeParams: {
         tableOid: number,
         columnOid: number
+    }
+} | {
+    invokeAction: 'dialog_table_data',
+    invokeParams: {
+        tableOid: number,
+        tableName: string
     }
 } | {
     invokeAction: 'dialog_close',

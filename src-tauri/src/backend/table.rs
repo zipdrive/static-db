@@ -475,8 +475,8 @@ pub fn delete(table_oid: i64) -> Result<(), error::Error> {
 #[derive(Serialize)]
 /// The most bare-bones version of table metadata, used solely for populating the list of tables
 pub struct BasicMetadata {
-    oid: i64,
-    name: String
+    pub oid: i64,
+    pub name: String
 }
 
 /// Gets metadata for a specified table.

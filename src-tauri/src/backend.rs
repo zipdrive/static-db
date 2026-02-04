@@ -474,16 +474,13 @@ pub async fn dialog_edit_table_column(app: AppHandle, table_oid: i64, column_oid
 
 #[tauri::command]
 /// Open a separate window for the contents of a table.
-pub async fn dialog_table_data(app: AppHandle, table_oid: i64) -> Result<(), error::Error> {
-    // Query the name of the table
-    let table_name: String = table::get_metadata(&table_oid)?.name;
-
+pub async fn dialog_table_data(app: AppHandle, table_oid: i64, table_name: String) -> Result<(), error::Error> {
     // Create the window
     let window_idx = app.webview_windows().len();
     WebviewWindowBuilder::new(
         &app,
         format!("tableWindow-{window_idx}"),
-        WebviewUrl::App(format!("/src/frontend/table.html?table_oid={table_oid}&navigation_collapsed=1").into()),
+        WebviewUrl::App(format!("/src/frontend/table.html?table_oid={table_oid}").into()),
     )
     .title(&table_name)
     .inner_size(800.0, 600.0)
@@ -505,6 +502,18 @@ pub fn dialog_close(window: tauri::Window) -> Result<(), error::Error> {
 pub fn get_table_list(table_channel: Channel<table::BasicMetadata>) -> Result<(), error::Error> {
     // Use channel to send BasicMetadata objects
     table::send_metadata_list(table_channel)?;
+    return Ok(());
+}
+
+#[tauri::command]
+pub fn get_report_list(report_channel: Channel<table::BasicMetadata>) -> Result<(), error::Error> {
+    // Use channel to send BasicMetadata objects
+    return Ok(());
+}
+
+#[tauri::command]
+pub fn get_object_type_list(object_type_channel: Channel<table::BasicMetadata>) -> Result<(), error::Error> {
+    // Use channel to send BasicMetadata objects
     return Ok(());
 }
 

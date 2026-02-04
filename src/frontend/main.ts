@@ -2,7 +2,7 @@ import { Menu, MenuItem } from "@tauri-apps/api/menu";
 import { Channel } from "@tauri-apps/api/core";
 import { listen } from '@tauri-apps/api/event';
 import { message } from "@tauri-apps/plugin-dialog";
-import { TableCellChannelPacket, TableColumnMetadata, TableRowCellChannelPacket, executeAsync, openDialogAsync, queryAsync } from './backendutils';
+import { BasicMetadata, TableCellChannelPacket, TableColumnMetadata, TableRowCellChannelPacket, executeAsync, openDialogAsync, queryAsync } from './backendutils';
 import { addTableColumnCellToRow } from "./tableutils";
 
 
@@ -16,57 +16,47 @@ async function updateTableListAsync() {
   });
   let addTableButtonWrapper: HTMLElement | null = document.querySelector('#add-new-table-button-wrapper');
 
-  // Set up a channel
-  const onReceiveUpdatedTable = new Channel<{ oid: number, name: string }>();
-  onReceiveUpdatedTable.onmessage = (table) => {
-    // Load in each table and create a button for that table
-    let openTableButton: HTMLButtonElement = document.createElement('button');
-    openTableButton.classList.add('list-object');
-    openTableButton.innerText = table.name;
-    
-    // When clicked, open window containing table data
-    openTableButton?.addEventListener("click", _ => {
-      // Display the table
-      console.debug(`table.html?table_oid=${encodeURIComponent(table.oid)}`);
-      window.location.href = `table.html?table_oid=${encodeURIComponent(table.oid)}`;
+}
+
+/**
+ * Adds an item to the list of all tables.
+ * @param tablesList 
+ * @param tableMetadata 
+ */
+function addTableToList(tablesList: HTMLElement, tableMetadata: BasicMetadata) {
+  async function openTableAsync() {
+    await openDialogAsync({
+      invokeAction: 'dialog_table_data',
+      invokeParams: {
+        tableOid: tableMetadata.oid,
+        tableName: tableMetadata.name
+      }
     });
+  }
 
-    // Add the button to the DOM tree
-    addTableButtonWrapper?.insertAdjacentElement('beforebegin', openTableButton);
-  };
+  async function editTableMetadataAsync() {
+    // TODO
+  }
 
-  // Send a command to Rust to get the list of tables from the database
-  await queryAsync({
-    invokeAction: "get_table_list", 
-    invokeParams: { tableChannel: onReceiveUpdatedTable }
-  });
-}
+  async function deleteTableAsync() {
+    await executeAsync({
+      deleteTable: {
+        tableOid: tableMetadata.oid
+      }
+    });
+  }
 
-/**
- * Opens the dialog to create a new table.
- */
-async function createTable() {
-  await openDialogAsync({
-    invokeAction: "dialog_create_table", 
-    invokeParams: {}
-  });
-}
-
-/**
- * Adds a table to the list of tables.
- */
-function addTableToList(tablesList: HTMLElement, tableOid: number) {
   let tableRadioElem: HTMLInputElement = document.createElement('input');
   tableRadioElem.name = 'tables';
   tableRadioElem.type = 'radio';
-  tableRadioElem.id = `table-button-${tableOid}`;
+  tableRadioElem.id = `table-button-${tableMetadata.oid}`;
   tableRadioElem.classList.add('hidden');
 
   let tableElem: HTMLLabelElement = document.createElement('label');
   tableElem.htmlFor = tableRadioElem.id;
   tableElem.classList.add('list-item');
   tableElem.tabIndex = 0;
-  tableElem.innerText = `Table${tableOid}`;
+  tableElem.innerText = tableMetadata.name;
   
   tableRadioElem.addEventListener('input', (_) => {
     let openTableButton: HTMLButtonElement | null = document.getElementById('open-table-button') as HTMLButtonElement;
@@ -77,9 +67,7 @@ function addTableToList(tablesList: HTMLElement, tableOid: number) {
 
       // Add event listener to the clone
       openTableButtonClone.disabled = false;
-      openTableButtonClone.addEventListener('click', (_) => {
-        // Open the table in a new window
-      });
+      openTableButtonClone.addEventListener('click', openTableAsync);
     }
 
     let editTableButton: HTMLButtonElement | null = document.getElementById('edit-table-button') as HTMLButtonElement;
@@ -103,12 +91,14 @@ function addTableToList(tablesList: HTMLElement, tableOid: number) {
 
       // Add event listener to the clone
       deleteTableButtonClone.disabled = false;
-      deleteTableButtonClone.addEventListener('click', (_) => {
-        // Delete the table
-      });
+      deleteTableButtonClone.addEventListener('click', deleteTableAsync);
     }
   });
 
+  // Add an event listener to the item in the list, causing the table to be opened when double-clicked
+  tableElem.addEventListener('dblclick', openTableAsync);
+
+  // Add to the DOM tree
   tablesList.appendChild(tableRadioElem);
   tablesList.appendChild(tableElem);
 }
@@ -116,86 +106,175 @@ function addTableToList(tablesList: HTMLElement, tableOid: number) {
 /**
  * Loads the list of all tables from the database.
  */
-async function loadTables() {
-  let tablesList: HTMLElement | null = document.querySelector('#tables-container .list');
-  if (tablesList) {
-    let tableRadioElem: HTMLInputElement = document.createElement('input');
-    tableRadioElem.name = 'tables';
-    tableRadioElem.type = 'radio';
-    tableRadioElem.checked = true;
-    tableRadioElem.classList.add('hidden');
-    tablesList.appendChild(tableRadioElem);
+function loadTables() {
+  navigator.locks.request('tables-container', async () => {
+    let tablesList: HTMLElement | null = document.querySelector('#tables-container .list');
+    if (tablesList) {
+      // Clear out the list
+      tablesList.innerHTML = '';
 
-    addTableToList(tablesList, 10);
-    addTableToList(tablesList, 11);
-    addTableToList(tablesList, 12);
-  }
+      // Set up a channel that adds a received table to the list
+      const onReceiveUpdatedTable = new Channel<BasicMetadata>();
+      onReceiveUpdatedTable.onmessage = (tableMetadata) => {
+        addTableToList(tablesList, tableMetadata);
+      };
+
+      // Send a command to Rust to get the list of tables from the database
+      await queryAsync({
+        invokeAction: "get_table_list", 
+        invokeParams: { tableChannel: onReceiveUpdatedTable }
+      });
+
+      if (tablesList.childElementCount > 0) {
+        // If at least one table exists, add a hidden radio button to indicate that no table is selected
+        let unselectedRadioElem: HTMLInputElement = document.createElement('input');
+        unselectedRadioElem.name = 'tables';
+        unselectedRadioElem.type = 'radio';
+        unselectedRadioElem.checked = true;
+        unselectedRadioElem.classList.add('hidden');
+        tablesList.appendChild(unselectedRadioElem);
+      } else {
+        // If no tables exist, display a message saying that the user needs to click "New" to create one
+        let emptyElem: HTMLDivElement = document.createElement('div');
+        emptyElem.classList.add('empty-list-item');
+        emptyElem.innerText = 'Click "New" to Define a New Table';
+        tablesList.appendChild(emptyElem);
+      }
+    }
+  });
+}
+
+/**
+ * Adds an item to the list of all reports.
+ * @param reportsList 
+ * @param reportMetadata 
+ */
+function addReportToList(reportsList: HTMLElement, reportMetadata: BasicMetadata) {
+
 }
 
 /**
  * Loads the list of all reports from the database.
  */
-async function loadReports() {
-  let reportsList: HTMLElement | null = document.querySelector('#reports-container .list');
-  if (reportsList) {
-    let emptyRadioElem: HTMLInputElement = document.createElement('input');
-    emptyRadioElem.name = 'reports';
-    emptyRadioElem.type = 'radio';
-    emptyRadioElem.checked = true;
-    emptyRadioElem.classList.add('hidden');
-    reportsList.appendChild(emptyRadioElem);
+function loadReports() {
+  navigator.locks.request('reports-container', async () => {
+    let reportsList: HTMLElement | null = document.querySelector('#reports-container .list');
+    if (reportsList) {
+      // Clear out the list
+      reportsList.innerHTML = '';
 
-    let emptyElem: HTMLDivElement = document.createElement('div');
-    emptyElem.classList.add('empty-list-item');
-    emptyElem.innerText = 'Click "New" to Define a New Report';
-    reportsList.appendChild(emptyElem);
-  }
+      // Set up a channel that adds a received report to the list
+      const onReceiveReport = new Channel<BasicMetadata>();
+      onReceiveReport.onmessage = (reportMetadata) => {
+        addReportToList(reportsList, reportMetadata);
+      };
+
+      // Send a command to Rust to get the list of reports from the database
+      await queryAsync({
+        invokeAction: "get_report_list", 
+        invokeParams: { reportChannel: onReceiveReport }
+      });
+
+      if (reportsList.childElementCount > 0) {
+        // If at least one report exists, add a hidden radio button to indicate that no report is selected
+        let unselectedRadioElem: HTMLInputElement = document.createElement('input');
+        unselectedRadioElem.name = 'reports';
+        unselectedRadioElem.type = 'radio';
+        unselectedRadioElem.checked = true;
+        unselectedRadioElem.classList.add('hidden');
+        reportsList.appendChild(unselectedRadioElem);
+      } else {
+        // If no reports exist, display a message saying that the user needs to click "New" to create one
+        let emptyElem: HTMLDivElement = document.createElement('div');
+        emptyElem.classList.add('empty-list-item');
+        emptyElem.innerText = 'Click "New" to Define a New Report';
+        reportsList.appendChild(emptyElem);
+      }
+    }
+  });
 }
 
 /**
- * Loads the list of all global data types from the database.
+ * Adds an item to the list of all object types.
+ * @param globalDataTypesList 
+ * @param globalDataTypeMetadata 
  */
-async function loadGlobalDataTypes() {
-  let globalDataTypesList: HTMLElement | null = document.querySelector('#global-types-container .list');
-  if (globalDataTypesList) {
-    let emptyRadioElem: HTMLInputElement = document.createElement('input');
-    emptyRadioElem.name = 'globalDataTypes';
-    emptyRadioElem.type = 'radio';
-    emptyRadioElem.checked = true;
-    emptyRadioElem.classList.add('hidden');
-    globalDataTypesList.appendChild(emptyRadioElem);
+function addObjectTypeToList(globalDataTypesList: HTMLElement, globalDataTypeMetadata: BasicMetadata) {
+  
+}
 
-    let emptyElem: HTMLDivElement = document.createElement('div');
-    emptyElem.classList.add('empty-list-item');
-    emptyElem.innerText = 'Click "New" to Define a New Global Data Type';
-    globalDataTypesList.appendChild(emptyElem);
-  }
+/**
+ * Loads the list of all object types from the database.
+ */
+function loadObjectTypes() {
+  navigator.locks.request('global-data-types-container', async () => {
+    let objectTypesList: HTMLElement | null = document.querySelector('#object-types-container .list');
+    if (objectTypesList) {
+      // Clear out the list
+      objectTypesList.innerHTML = '';
+
+      // Set up a channel that adds a received type to the list
+      const onReceiveObjectType = new Channel<BasicMetadata>();
+      onReceiveObjectType.onmessage = (objectTypeMetadata) => {
+        addReportToList(objectTypesList, objectTypeMetadata);
+      };
+
+      // Send a command to Rust to get the list of types from the database
+      await queryAsync({
+        invokeAction: "get_object_type_list", 
+        invokeParams: { objectTypeChannel: onReceiveObjectType }
+      });
+
+      if (objectTypesList.childElementCount > 0) {
+        // If at least one object type exists, add a hidden radio button to indicate that no report is selected
+        let unselectedRadioElem: HTMLInputElement = document.createElement('input');
+        unselectedRadioElem.name = 'objectTypes';
+        unselectedRadioElem.type = 'radio';
+        unselectedRadioElem.checked = true;
+        unselectedRadioElem.classList.add('hidden');
+        objectTypesList.appendChild(unselectedRadioElem);
+      } else {
+        // If no object types exist, display a message saying that the user needs to click "New" to create one
+        let emptyElem: HTMLDivElement = document.createElement('div');
+        emptyElem.classList.add('empty-list-item');
+        emptyElem.innerText = 'Click "New" to Define a New Object Type';
+        objectTypesList.appendChild(emptyElem);
+      }
+    }
+  });
 }
 
 // Add initial listeners
-window.addEventListener("DOMContentLoaded", async () => {
-  console.debug('Page loaded.');
-  document.getElementById('new-table-button')?.addEventListener('click', (_) => {
-    console.debug('New table dialog called.');
-  });
-  document.getElementById('new-report-button')?.addEventListener('click', (_) => {
-    console.debug('New report dialog called.');
-  });
-  document.getElementById('new-global-type-button')?.addEventListener('click', (_) => {
-    console.debug('New global data type dialog called.');
-  });
-
-  await loadTables();
-  await loadReports();
-  await loadGlobalDataTypes();
-});
-
-listen<any>("update-table-list", (_) => {
-  navigator.locks.request('table-sidebar', async () => await updateTableListAsync());
-});
-
-
 window.addEventListener("DOMContentLoaded", () => {
-  // TODO
+  console.debug('Page loaded.');
+  document.getElementById('new-table-button')?.addEventListener('click', async (_) => {
+    await openDialogAsync({
+      invokeAction: "dialog_create_table", 
+      invokeParams: {}
+    });
+  });
+  document.getElementById('new-report-button')?.addEventListener('click', async (_) => {
+    /*
+    await openDialogAsync({
+      invokeAction: "dialog_create_report", 
+      invokeParams: {}
+    });
+    */
+  });
+  document.getElementById('new-object-type-button')?.addEventListener('click', async (_) => {
+    /*
+    await openDialogAsync({
+      invokeAction: "dialog_create_object_type", 
+      invokeParams: {}
+    });
+    */
+  });
+
+  loadTables();
+  loadReports();
+  loadObjectTypes();
 });
 
+listen<any>("update-table-list", loadTables);
+listen<any>("update-report-list", loadReports);
+listen<any>("update-object-type-list", loadObjectTypes);

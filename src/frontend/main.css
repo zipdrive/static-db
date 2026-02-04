@@ -25,7 +25,7 @@
 }
 #tables-tab-button:checked ~ #tables-tab,
 #reports-tab-button:checked ~ #reports-tab,
-#global-types-tab-button:checked ~ #global-types-tab {
+#object-types-tab-button:checked ~ #object-types-tab {
   position: relative;
   padding: 0.1em 0.7em 0;
   height: 1.9em;
@@ -48,7 +48,7 @@
 
 :has(#tables-tab-button:checked) ~ #tables-container,
 :has(#reports-tab-button:checked) ~ #reports-container,
-:has(#global-types-tab-button:checked) ~ #global-types-container {
+:has(#object-types-tab-button:checked) ~ #object-types-container {
   display: inline;
 }
 
