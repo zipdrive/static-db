@@ -158,7 +158,7 @@ pub fn edit(table_oid: i64, column_oid: i64, column_name: &str, column_type: col
             t.MODE,
             c.TABLE_OID
         FROM METADATA_TABLE_COLUMN c
-        INNER JOIN METADATA_TABLE_COLUMN_TYPE t ON t.OID = c.TYPE_OID
+        INNER JOIN METADATA_TYPE t ON t.OID = c.TYPE_OID
         WHERE c.OID = ?1;", 
         params![column_oid], 
         |row| {
@@ -216,7 +216,7 @@ pub fn edit(table_oid: i64, column_oid: i64, column_name: &str, column_type: col
 
                         // Delete the dropdown type from the metadata
                         trans.execute(
-                            "DELETE FROM METADATA_TABLE_COLUMN_TYPE WHERE OID = ?1", 
+                            "DELETE FROM METADATA_TYPE WHERE OID = ?1", 
                             params![column_type_oid]
                         )?;
                     },
@@ -234,7 +234,7 @@ pub fn edit(table_oid: i64, column_oid: i64, column_name: &str, column_type: col
 
                         // Delete the type from the metadata
                         trans.execute(
-                            "DELETE FROM METADATA_TABLE_COLUMN_TYPE WHERE OID = ?1", 
+                            "DELETE FROM METADATA_TYPE WHERE OID = ?1", 
                             params![column_type_oid]
                         )?;
                     },
@@ -258,7 +258,7 @@ pub fn edit(table_oid: i64, column_oid: i64, column_name: &str, column_type: col
 
                         // Delete the type from the metadata
                         trans.execute(
-                            "DELETE FROM METADATA_TABLE_COLUMN_TYPE WHERE OID = ?1", 
+                            "DELETE FROM METADATA_TYPE WHERE OID = ?1", 
                             params![column_type_oid]
                         )?;
                     }
@@ -382,7 +382,7 @@ pub fn delete(column_oid: i64) -> Result<(), error::Error> {
             t.MODE,
             c.TABLE_OID
         FROM METADATA_TABLE_COLUMN c
-        INNER JOIN METADATA_TABLE_COLUMN_TYPE t ON t.OID = c.TYPE_OID
+        INNER JOIN METADATA_TYPE t ON t.OID = c.TYPE_OID
         WHERE c.OID = ?1;", 
         params![column_oid], 
         |row| {
@@ -426,7 +426,7 @@ pub fn delete(column_oid: i64) -> Result<(), error::Error> {
 
                     // Delete the type from the metadata
                     trans.execute(
-                        "DELETE FROM METADATA_TABLE_COLUMN_TYPE WHERE OID = ?1", 
+                        "DELETE FROM METADATA_TYPE WHERE OID = ?1", 
                         params![column_type_oid]
                     )?;
                     trans.commit()?;
@@ -449,7 +449,7 @@ pub fn delete(column_oid: i64) -> Result<(), error::Error> {
 
                     // Delete the type from the metadata
                     trans.execute(
-                        "DELETE FROM METADATA_TABLE_COLUMN_TYPE WHERE OID = ?1", 
+                        "DELETE FROM METADATA_TYPE WHERE OID = ?1", 
                         params![column_type_oid]
                     )?;
                     trans.commit()?;
@@ -478,7 +478,7 @@ pub fn delete(column_oid: i64) -> Result<(), error::Error> {
 
                     // Delete the type from the metadata
                     trans.execute(
-                        "DELETE FROM METADATA_TABLE_COLUMN_TYPE WHERE OID = ?1", 
+                        "DELETE FROM METADATA_TYPE WHERE OID = ?1", 
                         params![column_type_oid]
                     )?;
                     trans.commit()?;
@@ -508,7 +508,7 @@ pub fn get_metadata(column_oid: i64) -> Result<Option<Metadata>, error::Error> {
                 c.IS_UNIQUE,
                 c.IS_PRIMARY_KEY
             FROM METADATA_TABLE_COLUMN c
-            INNER JOIN METADATA_TABLE_COLUMN_TYPE t ON t.OID = c.TYPE_OID
+            INNER JOIN METADATA_TYPE t ON t.OID = c.TYPE_OID
             WHERE c.OID = ?1 
             ORDER BY c.COLUMN_ORDERING ASC;",
          params![column_oid], 
@@ -544,7 +544,7 @@ pub fn send_metadata_list(table_oid: i64, column_channel: Channel<Metadata>) -> 
                 c.IS_UNIQUE,
                 c.IS_PRIMARY_KEY
             FROM METADATA_TABLE_COLUMN c
-            INNER JOIN METADATA_TABLE_COLUMN_TYPE t ON t.OID = c.TYPE_OID
+            INNER JOIN METADATA_TYPE t ON t.OID = c.TYPE_OID
             WHERE c.TABLE_OID = ?1 AND c.TRASH = 0
             ORDER BY c.COLUMN_ORDERING ASC;",
          params![table_oid], 
@@ -584,7 +584,7 @@ pub fn set_table_column_dropdown_values(column_oid: i64, dropdown_values: Vec<Dr
                 c.TYPE_OID, 
                 t.MODE
             FROM METADATA_TABLE_COLUMN c
-            INNER JOIN METADATA_TABLE_COLUMN_TYPE t ON t.OID = c.TYPE_OID
+            INNER JOIN METADATA_TYPE t ON t.OID = c.TYPE_OID
             WHERE c.OID = ?1;",
          params![column_oid], 
         |row| {
@@ -639,7 +639,7 @@ pub fn get_table_column_dropdown_values(column_oid: i64) -> Result<Vec<DropdownV
                 c.TYPE_OID, 
                 t.MODE
             FROM METADATA_TABLE_COLUMN c
-            INNER JOIN METADATA_TABLE_COLUMN_TYPE t ON t.OID = c.TYPE_OID
+            INNER JOIN METADATA_TYPE t ON t.OID = c.TYPE_OID
             WHERE c.OID = ?1;",
          params![column_oid], 
         |row| {
@@ -679,7 +679,7 @@ pub fn send_table_column_dropdown_values(column_oid: i64, dropdown_value_channel
                 c.TYPE_OID, 
                 t.MODE
             FROM METADATA_TABLE_COLUMN c
-            INNER JOIN METADATA_TABLE_COLUMN_TYPE t ON t.OID = c.TYPE_OID
+            INNER JOIN METADATA_TYPE t ON t.OID = c.TYPE_OID
             WHERE c.OID = ?1;",
          params![column_oid], 
         |row| {
@@ -741,7 +741,7 @@ pub fn send_type_metadata_list(column_type: column_type::MetadataColumnType, typ
             tbl.OID AS PARENT_OID,
             tbl.NAME
         FROM METADATA_TABLE tbl
-        INNER JOIN METADATA_TABLE_COLUMN_TYPE typ ON typ.OID = tbl.OID
+        INNER JOIN METADATA_TYPE typ ON typ.OID = tbl.OID
         WHERE typ.MODE = ?1
         ORDER BY tbl.NAME;", 
         [column_type.get_type_mode()], 

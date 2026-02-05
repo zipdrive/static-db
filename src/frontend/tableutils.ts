@@ -43,16 +43,6 @@ export async function addTableColumnCellToRow(rowNode: HTMLTableRowElement, tabl
 
           // If necessary, verify type before uploading to database
           switch (primitiveType) {
-            case 'JSON':
-              try {
-                JSON.parse(newPrimitiveValue);
-              } catch (e) {
-                await message("Value does not conform to JSON syntax.", {
-                  title: "Unable to update value.",
-                  kind: 'warning'
-                });
-              }
-              break;
             case 'Integer':
               let num: number = parseFloat(newPrimitiveValue);
               if (!isNaN(num)) {
@@ -115,13 +105,15 @@ export async function addTableColumnCellToRow(rowNode: HTMLTableRowElement, tabl
       }
     }
   } else if ('singleSelectDropdown' in cell.columnType || 'reference' in cell.columnType) {
+    console.debug(JSON.stringify(cell));
+
     let selectNode: HTMLSelectElement = document.createElement('select');
     selectNode.insertAdjacentHTML('beforeend', '<option value="">— NULL —</option>');
 
     // Retrieve dropdown values from database to populate dropdown
     const onReceiveDropdownValue = new Channel<DropdownValue>();
     onReceiveDropdownValue.onmessage = (dropdownValue) => {
-      console.debug(`Received ${JSON.stringify(dropdownValue)}`);
+      // Create option node in dropdown list
       let optionNode: HTMLOptionElement = document.createElement('option');
       optionNode.value = dropdownValue.trueValue ?? '';
       optionNode.innerText = dropdownValue.displayValue ?? '';
@@ -163,6 +155,9 @@ export async function addTableColumnCellToRow(rowNode: HTMLTableRowElement, tabl
 
     // Add the select node to the cell
     tableCellNode.insertAdjacentElement('beforeend', selectNode);
+
+    // Set the value of the dropdown
+    selectNode.value = cell.trueValue ?? '';
   } else if ('multiSelectDropdown' in cell.columnType) {
     // TODO
   } else if ('childObject' in cell.columnType) {

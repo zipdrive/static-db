@@ -19,10 +19,10 @@ pub fn create(name: String) -> Result<i64, error::Error> {
     let trans = conn.transaction()?;
 
     // Add metadata for the table
-    trans.execute("INSERT INTO METADATA_TABLE_COLUMN_TYPE (MODE) VALUES (3);", [])?;
+    trans.execute("INSERT INTO METADATA_TYPE (MODE) VALUES (3);", [])?;
     let table_oid: i64 = trans.last_insert_rowid();
     trans.execute(
-        "INSERT INTO METADATA_TABLE (OID, NAME) VALUES (?1, ?2);",
+        "INSERT INTO METADATA_TABLE (TYPE_OID, NAME) VALUES (?1, ?2);",
         params![table_oid, &name]
     )?;
 
@@ -45,37 +45,9 @@ pub fn create(name: String) -> Result<i64, error::Error> {
 
 /// Builds a query to select columns from a table.
 pub fn build_table_query(trans: &Transaction, table_oid: i64) -> Result<String, error::Error> {
-    let mut select_cols_cmd: String = String::from("t.OID");
+    let mut select_cols_cmd: String = String::from("t.OID AS OID, ROW_NUMBER() OVER (ORDER BY t.OID) AS ROW_INDEX");
     let mut select_tbls_cmd: String = format!("FROM TABLE{table_oid} t");
     let mut tbl_count: i64 = 1;
-
-    // Load the column sort order
-    struct TableOrderbyClause {
-        column_oid: i64,
-        sort_ascending: bool 
-    }
-    let mut table_orderby_clauses: Vec<TableOrderbyClause> = Vec::new();
-    for orderby_clause_result in trans.prepare("
-        SELECT 
-            o.COLUMN_OID, 
-            o.SORT_ASCENDING 
-        FROM METADATA_TABLE_ORDERBY o
-        INNER JOIN METADATA_TABLE_COLUMN c ON c.OID = o.COLUMN_OID
-        WHERE o.TABLE_OID = ?1 AND c.TRASH = 0
-        ORDER BY 
-            o.SORT_ORDERING
-        ")?
-        .query_and_then(params![table_oid], 
-        |row: &Row<'_>| -> Result<TableOrderbyClause, RusqliteError> {
-            return Ok(TableOrderbyClause{
-                column_oid: row.get(0)?,
-                sort_ascending: row.get(1)?
-            });
-        })? {
-        
-        table_orderby_clauses.push(orderby_clause_result?);
-    }
-    let mut select_any_col: HashMap<i64, String> = HashMap::new();
 
     // Iterate over all columns of the table, building up the table's view
     db::query_iterate(trans, 
@@ -84,14 +56,14 @@ pub fn build_table_query(trans: &Transaction, table_oid: i64) -> Result<String, 
             c.TYPE_OID,
             t.MODE
         FROM METADATA_TABLE_COLUMN c
-        INNER JOIN METADATA_TABLE_COLUMN_TYPE t ON t.OID = c.TYPE_OID
+        INNER JOIN METADATA_TYPE t ON t.OID = c.TYPE_OID
         WHERE c.TABLE_OID = ?1 AND c.TRASH = 0
         ORDER BY c.COLUMN_ORDERING;", 
         params![table_oid], 
         &mut |row| {
             let column_oid: i64 = row.get("OID")?;
             let column_type: column_type::MetadataColumnType = column_type::MetadataColumnType::from_database(row.get("TYPE_OID")?, row.get("MODE")?);
-            let select_col: String;
+            
             match column_type {
                 column_type::MetadataColumnType::Primitive(prim) => {
                     match prim {
@@ -101,81 +73,50 @@ pub fn build_table_query(trans: &Transaction, table_oid: i64) -> Result<String, 
                         | column_type::Primitive::Number
                         | column_type::Primitive::Text
                         | column_type::Primitive::JSON => {
-                            select_col = format!("CAST(t.COLUMN{column_oid} AS TEXT)");
+                            select_cols_cmd = format!("{select_cols_cmd}, CAST(t.COLUMN{column_oid} AS TEXT) AS COLUMN{column_oid}");
                         },
                         column_type::Primitive::Date => {
-                            select_col = format!("DATE(t.COLUMN{column_oid}, 'unixepoch')");
+                            select_cols_cmd = format!("{select_cols_cmd}, DATE(t.COLUMN{column_oid}, 'unixepoch') AS COLUMN{column_oid}");
                         },
                         column_type::Primitive::Timestamp => {
-                            select_col = format!("STRFTIME('%FT%TZ', t.COLUMN{column_oid}, 'unixepoch')");
+                            select_cols_cmd = format!("{select_cols_cmd}, STRFTIME('%FT%TZ', t.COLUMN{column_oid}, 'unixepoch') AS COLUMN{column_oid}");
                         },
                         column_type::Primitive::File => {
-                            select_col = format!("CASE WHEN t.COLUMN{column_oid} IS NULL THEN NULL ELSE 'File' END");
+                            select_cols_cmd = format!("{select_cols_cmd}, CASE WHEN t.COLUMN{column_oid} IS NULL THEN NULL ELSE 'File' END AS COLUMN{column_oid}");
                         },
                         column_type::Primitive::Image => {
-                            select_col = format!("CASE WHEN t.COLUMN{column_oid} IS NULL THEN NULL ELSE 'Thumbnail' END");
+                            select_cols_cmd = format!("{select_cols_cmd}, CASE WHEN t.COLUMN{column_oid} IS NULL THEN NULL ELSE 'Thumbnail' END AS COLUMN{column_oid}");
                         }
                     }
                 },
                 column_type::MetadataColumnType::SingleSelectDropdown(column_type_oid) => {
-                    select_col = format!("t{tbl_count}.VALUE");
+                    select_cols_cmd = format!("{select_cols_cmd}, t{tbl_count}.VALUE AS COLUMN{column_oid}");
                     select_tbls_cmd = format!("{select_tbls_cmd} LEFT JOIN TABLE{column_type_oid} t{tbl_count} ON t{tbl_count}.OID = t.COLUMN{column_oid}");
                     tbl_count += 1;
                 },
                 column_type::MetadataColumnType::MultiSelectDropdown(column_type_oid) => {
-                    select_col = format!("(SELECT '[' || GROUP_CONCAT(b.VALUE) || ']' FROM TABLE{column_type_oid}_MULTISELECT a INNER JOIN TABLE{column_type_oid} b ON b.OID = a.VALUE_OID WHERE a.ROW_OID = t.OID GROUP BY a.ROW_OID)");
+                    select_cols_cmd = format!("{select_cols_cmd}, (SELECT '[' || GROUP_CONCAT(b.VALUE) || ']' FROM TABLE{column_type_oid}_MULTISELECT a INNER JOIN TABLE{column_type_oid} b ON b.OID = a.VALUE_OID WHERE a.ROW_OID = t.OID GROUP BY a.ROW_OID) AS COLUMN{column_oid}");
                 },
                 column_type::MetadataColumnType::Reference(referenced_table_oid) 
                 | column_type::MetadataColumnType::ChildObject(referenced_table_oid) => {
-                    select_col = format!("COALESCE(t{tbl_count}.DISPLAY_VALUE, CASE WHEN t.COLUMN{column_oid} IS NOT NULL THEN '— DELETED —' ELSE NULL END)");
+                    select_cols_cmd = format!("{select_cols_cmd}, COALESCE(t{tbl_count}.DISPLAY_VALUE, CASE WHEN t.COLUMN{column_oid} IS NOT NULL THEN '— DELETED —' ELSE NULL END) AS COLUMN{column_oid}");
                     select_tbls_cmd = format!("{select_tbls_cmd} LEFT JOIN TABLE{referenced_table_oid}_SURROGATE t{tbl_count} ON t{tbl_count}.OID = t.COLUMN{column_oid}");
                     tbl_count += 1;
                 },
                 column_type::MetadataColumnType::ChildTable(column_type_oid) => {
-                    select_col = format!("(SELECT '[' || GROUP_CONCAT(a.DISPLAY_VALUE) || ']' FROM TABLE{column_type_oid}_SURROGATE a WHERE a.PARENT_OID = t.OID GROUP BY a.PARENT_OID)");
+                    select_cols_cmd = format!("{select_cols_cmd}, (SELECT '[' || GROUP_CONCAT(a.DISPLAY_VALUE) || ']' FROM TABLE{column_type_oid}_SURROGATE a WHERE a.PARENT_OID = t.OID GROUP BY a.PARENT_OID) AS COLUMN{column_oid}");
                 }
-            }
-
-            select_cols_cmd = format!("{select_cols_cmd}, {select_col} AS COLUMN{column_oid}");
-            if table_orderby_clauses.len() > 0 {
-                select_any_col.insert(column_oid, select_col.clone());
             }
             return Ok(());
         }
     )?;
-
-    // Build the ORDERBY clause, if there is one
-    let mut select_order_cmd: String;
-    if table_orderby_clauses.len() > 0 {
-        select_order_cmd = String::from("ORDER BY");
-        for orderby_clause in table_orderby_clauses {
-            match select_any_col.get(&orderby_clause.column_oid) {
-                Some(select_col) => {
-                    if select_order_cmd.eq("ORDER BY") {
-                        select_order_cmd = format!("{select_order_cmd} {select_col} {}", if orderby_clause.sort_ascending { "ASC" } else { "DESC" });
-                    } else {
-                        select_order_cmd = format!("{select_order_cmd}, {select_col} {}", if orderby_clause.sort_ascending { "ASC" } else { "DESC" });
-                    }
-                }
-                None => {
-                    // If supposed to sort over a particular column but that column wasn't constructed, throw an error
-                    return Err(error::Error::AdhocError(""));
-                }
-            }
-        }
-        select_cols_cmd = format!("ROW_NUMBER() OVER ({select_order_cmd}) AS ROW_INDEX, {select_cols_cmd}");
-    } else {
-        select_order_cmd = String::from("");
-        select_cols_cmd = format!("ROW_NUMBER() OVER (ORDER BY t.OID) AS ROW_INDEX, {select_cols_cmd}");
-    }
 
     // Create the new surrogate view
     let select_cmd: String = format!("
         SELECT
             {select_cols_cmd} 
         {select_tbls_cmd}
-        WHERE t.TRASH = 0
-        {select_order_cmd}"
+        WHERE t.TRASH = 0"
     );
     return Ok(select_cmd);
 }
@@ -296,7 +237,7 @@ fn create_surrogate_view(trans: &Transaction, table_oid: i64) -> Result<(), erro
             c.TYPE_OID,
             t.MODE
         FROM METADATA_TABLE_COLUMN c
-        INNER JOIN METADATA_TABLE_COLUMN_TYPE t ON t.OID = c.TYPE_OID
+        INNER JOIN METADATA_TYPE t ON t.OID = c.TYPE_OID
         WHERE c.TABLE_OID = ?1 AND c.TRASH = 0 AND c.IS_PRIMARY_KEY = 1
         ORDER BY c.COLUMN_ORDERING;", 
         params![table_oid], 
@@ -432,7 +373,7 @@ pub fn move_trash(table_oid: i64) -> Result<(), error::Error> {
     let trans = conn.transaction()?;
 
     // Flag the table as trash
-    trans.execute("UPDATE METADATA_TABLE SET TRASH = 1 WHERE OID = ?1;", params![table_oid])?;
+    trans.execute("UPDATE METADATA_TABLE SET TRASH = 1 WHERE TYPE_OID = ?1;", params![table_oid])?;
 
     // Commit and return
     trans.commit()?;
@@ -445,7 +386,7 @@ pub fn unmove_trash(table_oid: i64) -> Result<(), error::Error> {
     let trans = conn.transaction()?;
 
     // Flag the table as trash
-    trans.execute("UPDATE METADATA_TABLE SET TRASH = 0 WHERE OID = ?1;", params![table_oid])?;
+    trans.execute("UPDATE METADATA_TABLE SET TRASH = 0 WHERE TYPE_OID = ?1;", params![table_oid])?;
 
     // Commit and return
     trans.commit()?;
@@ -462,11 +403,51 @@ pub fn delete(table_oid: i64) -> Result<(), error::Error> {
     let drop_cmd: String = format!("DROP TABLE IF EXISTS TABLE{table_oid};");
     trans.execute(&drop_cmd, [])?;
 
-    // Drop tables associated locally with the table
-    // TODO
+    // Drop any of the table's child tables
+    for child_table_oid_result in trans.prepare("SELECT t.OID FROM METADATA_TABLE_COLUMN c INNER JOIN METADATA_TYPE t ON t.OID = c.TYPE_OID WHERE c.TABLE_OID = ?1 AND t.MODE = 5")?
+        .query_and_then(
+            params![table_oid], |row| row.get::<_, i64>("OID")
+        )? {
+        
+        // Extract the OID of the child table
+        let child_table_oid = child_table_oid_result?;
+
+        // Drop the child table's data
+        let drop_child_cmd = format!("DROP TABLE IF EXISTS TABLE{child_table_oid};");
+        trans.execute(&drop_child_cmd, [])?;
+
+        // Drop the child table from metadata
+        trans.execute(
+            "DELETE FROM METADATA_TYPE WHERE OID = ?1;",
+            params![child_table_oid]
+        )?;
+    }
+
+    // Drop any of the table's single-select dropdown value tables
+    for child_table_oid_result in trans.prepare("SELECT t.OID FROM METADATA_TABLE_COLUMN c INNER JOIN METADATA_TYPE t ON t.OID = c.TYPE_OID WHERE c.TABLE_OID = ?1 AND t.MODE = 2")?
+        .query_and_then(
+            params![table_oid], |row| row.get::<_, i64>("OID")
+        )? {
+        
+        // Extract the OID of the child table
+        let child_table_oid = child_table_oid_result?;
+
+        // Drop the child table's data
+        let drop_child_cmd = format!("DROP TABLE IF EXISTS TABLE{child_table_oid};");
+        trans.execute(&drop_child_cmd, [])?;
+
+        // Drop the child table from metadata
+        trans.execute(
+            "DELETE FROM METADATA_TYPE WHERE OID = ?1;",
+            params![child_table_oid]
+        )?;
+    }
 
     // Finally, drop the table's metadata
-    trans.execute("DELETE FROM METADATA_TABLE_COLUMN_TYPE WHERE OID = ?1;", params![table_oid])?;
+    trans.execute(
+        "DELETE FROM METADATA_TYPE WHERE OID = ?1;", 
+        params![table_oid]
+    )?;
     return Ok(());
 }
 

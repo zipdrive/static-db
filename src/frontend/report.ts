@@ -6,20 +6,19 @@ import { TableCellChannelPacket, TableColumnMetadata, TableRowCellChannelPacket,
 import { addTableColumnCellToRow } from "./tableutils";
 
 const urlParams = new URLSearchParams(window.location.search);
-const urlParamTableOid = urlParams.get('table_oid');
-console.debug(`table.html page loaded with table_oid=${urlParamTableOid ?? 'NULL'}`);
+const urlParamReportOid = urlParams.get('report_oid');
 
 
 
 
 
-if (urlParamTableOid) {
+if (urlParamReportOid) {
 
-  const tableOid: number = parseInt(urlParamTableOid);
-  const urlParamTablePageNum = urlParams.get('page_num') ?? '1';
-  const pageNum = parseInt(urlParamTablePageNum);
-  const urlParamTablePageSize = urlParams.get('page_size') ?? '1000';
-  const pageSize = parseInt(urlParamTablePageSize);
+  const reportOid: number = parseInt(urlParamReportOid);
+  const urlParamReportPageNum = urlParams.get('page_num') ?? '1';
+  const pageNum = parseInt(urlParamReportPageNum);
+  const urlParamReportPageSize = urlParams.get('page_size') ?? '1000';
+  const pageSize = parseInt(urlParamReportPageSize);
 
   /**
    * Adds a row to the current table.
@@ -33,7 +32,7 @@ if (urlParamTableOid) {
     tableRowIndexNode.style.position = 'sticky';
     tableRowIndexNode.style.left = '0';
     tableRowIndexNode.style.textAlign = 'center';
-    tableRowIndexNode.style.padding = '2px 0';
+    tableRowIndexNode.style.padding = '2px 6px';
     tableRowIndexNode.style.zIndex = '1';
     tableRowIndexNode.colSpan = 2;
     tableRowIndexNode.innerText = rowIndex.toString();
@@ -51,7 +50,7 @@ if (urlParamTableOid) {
           action: async () => {
             await executeAsync({
               insertTableRow: {
-                tableOid: tableOid,
+                tableOid: reportOid,
                 rowOid: rowOid
               }
             })
@@ -68,7 +67,7 @@ if (urlParamTableOid) {
           action: async () => {
             await executeAsync({
               deleteTableRow: {
-                tableOid: tableOid,
+                tableOid: reportOid,
                 rowOid: rowOid
               }
             })
@@ -102,8 +101,6 @@ if (urlParamTableOid) {
    * @param tableOid The OID of the table.
    */
   async function refreshTableAsync() {
-    console.debug("Now refreshing the entire contents of the table.");
-
     // Strip the former contents of the table
     let tableNode: HTMLTableElement | null = document.querySelector('#table-content');
     if (tableNode)
@@ -144,7 +141,7 @@ if (urlParamTableOid) {
                 await openDialogAsync({
                   invokeAction: 'dialog_create_table_column',
                   invokeParams: {
-                    tableOid: tableOid,
+                    tableOid: reportOid,
                     columnOrdering: columnOrdering
                   }
                 });
@@ -156,7 +153,7 @@ if (urlParamTableOid) {
                 await openDialogAsync({
                   invokeAction: 'dialog_edit_table_column',
                   invokeParams: {
-                    tableOid: tableOid,
+                    tableOid: reportOid,
                     columnOid: columnOid
                   }
                 });
@@ -167,7 +164,7 @@ if (urlParamTableOid) {
               action: async () => {
                 await executeAsync({
                   deleteTableColumn: {
-                    tableOid: tableOid,
+                    tableOid: reportOid,
                     columnOid: columnOid
                   }
                 });
@@ -192,7 +189,7 @@ if (urlParamTableOid) {
     await queryAsync({
       invokeAction: "get_table_column_list", 
       invokeParams: {
-        tableOid: tableOid, 
+        tableOid: reportOid, 
         columnChannel: onReceiveColumn 
       }
     });
@@ -206,7 +203,7 @@ if (urlParamTableOid) {
         await openDialogAsync({
           invokeAction: "dialog_create_table_column", 
           invokeParams: {
-            tableOid: tableOid,
+            tableOid: reportOid,
             columnOrdering: null
           }
         });
@@ -225,7 +222,7 @@ if (urlParamTableOid) {
     tableFooterCellNode.addEventListener('click', async (_) => {
       await executeAsync({
         pushTableRow: {
-          tableOid: tableOid 
+          tableOid: reportOid 
         }
       })
       .catch(async (e) => {
@@ -254,7 +251,7 @@ if (urlParamTableOid) {
         // Add cell to current row
         if (currentRowNode && currentRowOid) {
           // Get current row and column OID
-          addTableColumnCellToRow(currentRowNode, tableOid, currentRowOid, cell);
+          addTableColumnCellToRow(currentRowNode, reportOid, currentRowOid, cell);
         }
       }
     };
@@ -263,7 +260,7 @@ if (urlParamTableOid) {
     await queryAsync({
       invokeAction: "get_table_data",
       invokeParams: {
-        tableOid: tableOid, 
+        tableOid: reportOid, 
         pageNum: pageNum,
         pageSize: pageSize,
         cellChannel: onReceiveCell 
@@ -308,7 +305,7 @@ if (urlParamTableOid) {
       } else {
         // Add cell to current row
         if (tableRowNode) {
-          addTableColumnCellToRow(tableRowNode, tableOid, rowOid, cell);
+          addTableColumnCellToRow(tableRowNode, reportOid, rowOid, cell);
         }
       }
     };
@@ -317,7 +314,7 @@ if (urlParamTableOid) {
     await queryAsync({
       invokeAction: "get_table_row", 
       invokeParams: {
-        tableOid: tableOid, 
+        tableOid: reportOid, 
         rowOid: rowOid, 
         cellChannel: onReceiveCell 
       }
@@ -330,6 +327,7 @@ if (urlParamTableOid) {
     refreshTableAsync();
   });
 
+  /*
   listen<number>("update-table-data", (e) => {
     navigator.locks.request('table-content', async () => {
       if (e.payload == tableOid) {
@@ -337,12 +335,13 @@ if (urlParamTableOid) {
       }
     });
   });
-  listen<[number, number]>("update-table-row", (e) => {
+  listen<[number, number]>("update-report-row", (e) => {
     const updateTableOid = e.payload[0];
     const updateRowOid = e.payload[1];
     if (updateTableOid == tableOid) {
-      navigator.locks.request('table-content', async () => await updateRowAsync(updateRowOid));
+      navigator.locks.request('report-content', async () => await updateRowAsync(updateRowOid));
     }
   });
+  */
 
 }

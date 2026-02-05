@@ -2,7 +2,7 @@ mod db;
 mod table;
 mod column_type;
 mod column;
-mod data;
+mod table_data;
 use std::sync::Mutex;
 use serde::{Serialize, Deserialize};
 use tauri::menu::{ContextMenu, Menu, MenuItem, MenuBuilder};
@@ -285,7 +285,7 @@ impl Action {
                 }
             },
             Self::PushTableRow { table_oid } => {
-                match data::push(table_oid.clone()) {
+                match table_data::push(table_oid.clone()) {
                     Ok(row_oid) => {
                         let mut reverse_stack = if is_forward {
                             REVERSE_STACK.lock().unwrap() 
@@ -304,7 +304,7 @@ impl Action {
                 }
             },
             Self::InsertTableRow { table_oid, row_oid } => {
-                match data::insert(table_oid.clone(), row_oid.clone()) {
+                match table_data::insert(table_oid.clone(), row_oid.clone()) {
                     Ok(row_oid) => {
                         let mut reverse_stack = if is_forward {
                             REVERSE_STACK.lock().unwrap() 
@@ -323,7 +323,7 @@ impl Action {
                 }
             },
             Self::DeleteTableRow { table_oid, row_oid } => {
-                match data::move_trash(table_oid.clone(), row_oid.clone()) {
+                match table_data::move_trash(table_oid.clone(), row_oid.clone()) {
                     Ok(_) => {
                         let mut reverse_stack = if is_forward {
                             REVERSE_STACK.lock().unwrap() 
@@ -342,7 +342,7 @@ impl Action {
                 }
             },
             Self::RestoreDeletedTableRow { table_oid, row_oid } => {
-                match data::unmove_trash(table_oid.clone(), row_oid.clone()) {
+                match table_data::unmove_trash(table_oid.clone(), row_oid.clone()) {
                     Ok(_) => {
                         let mut reverse_stack = if is_forward {
                             REVERSE_STACK.lock().unwrap() 
@@ -361,7 +361,7 @@ impl Action {
                 }
             },
             Self::UpdateTableCellStoredAsPrimitiveValue { table_oid, column_oid, row_oid, value } => {
-                match data::try_update_primitive_value(table_oid.clone(), row_oid.clone(), column_oid.clone(), value.clone()) {
+                match table_data::try_update_primitive_value(table_oid.clone(), row_oid.clone(), column_oid.clone(), value.clone()) {
                     Ok(old_value) => {
                         let mut reverse_stack = if is_forward {
                             REVERSE_STACK.lock().unwrap() 
@@ -553,14 +553,14 @@ pub fn get_table_column_list(table_oid: i64, column_channel: Channel<column::Met
 }
 
 #[tauri::command]
-pub fn get_table_data(table_oid: i64, page_num: i64, page_size: i64, cell_channel: Channel<data::Cell>) -> Result<(), error::Error> {
-    data::send_table_data(table_oid, page_num, page_size, cell_channel)?;
+pub fn get_table_data(table_oid: i64, page_num: i64, page_size: i64, cell_channel: Channel<table_data::Cell>) -> Result<(), error::Error> {
+    table_data::send_table_data(table_oid, page_num, page_size, cell_channel)?;
     return Ok(());
 }
 
 #[tauri::command]
-pub fn get_table_row(table_oid: i64, row_oid: i64, cell_channel: Channel<data::RowCell>) -> Result<(), error::Error> {
-    data::send_table_row(table_oid, row_oid, cell_channel)?;
+pub fn get_table_row(table_oid: i64, row_oid: i64, cell_channel: Channel<table_data::RowCell>) -> Result<(), error::Error> {
+    table_data::send_table_row(table_oid, row_oid, cell_channel)?;
     return Ok(());
 }
 

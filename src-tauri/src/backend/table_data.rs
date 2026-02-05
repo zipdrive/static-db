@@ -1,5 +1,5 @@
 use std::collections::{HashMap, HashSet, LinkedList};
-
+use serde_json::{Result as SerdeJsonResult, Value};
 use rusqlite::{Error as RusqliteError, OptionalExtension, Row, Transaction, params};
 use serde::Serialize;
 use tauri::ipc::Channel;
@@ -168,10 +168,53 @@ pub fn delete(table_oid: i64, row_oid: i64) -> Result<(), error::Error> {
 pub fn try_update_primitive_value(table_oid: i64, row_oid: i64, column_oid: i64, new_value: Option<String>) -> Result<Option<String>, error::Error> {
     let mut conn = db::open()?;
     let trans = conn.transaction()?;
+    
+    // Verify that the column has a primitive type
+    let column_type = trans.query_one(
+        "SELECT
+            c.TYPE_OID,
+            t.MODE
+        FROM METADATA_TABLE_COLUMN c
+        INNER JOIN METADATA_TYPE t ON t.OID = c.TYPE_OID
+        WHERE c.OID = ?1", 
+        params![column_oid], 
+        |row| {
+            Ok(column_type::MetadataColumnType::from_database(row.get("TYPE_OID")?, row.get("MODE")?))
+        }
+    )?;
+    match column_type {
+        column_type::MetadataColumnType::Primitive(prim) => {
+            match prim {
+                column_type::Primitive::JSON => {
+                    // If column has JSON type, validate the JSON 
+                    match new_value.clone() {
+                        Some(json_str) => {
+                            match serde_json::from_str::<&'_ str>(&*json_str) {
+                                Ok(_) => {},
+                                Err(_) => {
+                                    return Err(error::Error::AdhocError("The provided value is invalid JSON."));
+                                }
+                            }
+                        },
+                        None => {}
+                    }
+                },
+                _ => {}
+            }
+            // Ignore other primitive types
+        },
+        column_type::MetadataColumnType::MultiSelectDropdown(_)
+        | column_type::MetadataColumnType::ChildTable(_) => {
+            return Err(error::Error::AdhocError("Value of column cannot be updated like a primitive value."));
+        }
+        _ => {
+            // Ignore the rest
+        }
+    }
 
     // Retrieve the previous value
-    let select_cmd = format!("SELECT CAST(COLUMN{column_oid} AS TEXT) AS PRIOR_VALUE FROM TABLE{table_oid} WHERE OID = ?1;");
-    let prev_value: Option<String> = trans.query_one(&select_cmd, params![row_oid],
+    let select_prev_value_cmd = format!("SELECT CAST(COLUMN{column_oid} AS TEXT) AS PRIOR_VALUE FROM TABLE{table_oid} WHERE OID = ?1;");
+    let prev_value: Option<String> = trans.query_one(&select_prev_value_cmd, params![row_oid],
         |row| { return Ok(row.get::<_, Option<String>>(0)?); })?;
 
     // Update the value
@@ -202,7 +245,8 @@ struct Column {
 fn construct_data_query(trans: &Transaction, table_oid: i64, include_row_oid_clause: bool) -> Result<(String, LinkedList<Column>), error::Error> {
     // Build the SELECT query
     let mut select_cmd_cols: String = String::from("SELECT ts.*");
-    let select_cmd_tables: String = format!("FROM TABLE{table_oid}_SURROGATE ts INNER JOIN TABLE{table_oid} t ON t.OID = ts.OID");
+    let select_surrogate_cmd: String = table::build_table_query(trans, table_oid.clone())?;
+    let select_cmd_tables: String = format!("FROM ({select_surrogate_cmd}) ts INNER JOIN TABLE{table_oid} t ON t.OID = ts.OID");
     let mut columns = LinkedList::<Column>::new();
     db::query_iterate(trans,
         "SELECT 
@@ -214,7 +258,7 @@ fn construct_data_query(trans: &Transaction, table_oid: i64, include_row_oid_cla
             c.IS_PRIMARY_KEY,
             c.NAME
         FROM METADATA_TABLE_COLUMN c
-        INNER JOIN METADATA_TABLE_COLUMN_TYPE t ON t.OID = c.TYPE_OID
+        INNER JOIN METADATA_TYPE t ON t.OID = c.TYPE_OID
         WHERE c.TABLE_OID = ?1 AND c.TRASH = 0
         ORDER BY c.COLUMN_ORDERING;",
         params![table_oid], 
@@ -333,6 +377,8 @@ pub fn send_table_data(table_oid: i64, page_num: i64, page_size: i64, cell_chann
     let trans = conn.transaction()?;
     let (table_select_cmd, columns) = construct_data_query(&trans, table_oid, false)?;
     
+    println!("{table_select_cmd}");
+
     // Iterate over the results, sending each cell to the frontend
     db::query_iterate(&trans, 
         &table_select_cmd, 

@@ -11,7 +11,6 @@
   margin: 0;
   padding: 0 8px;
   background-color: var(--main-color-dark);
-  font-size: 0.75em;
 }
 
 .tab {
@@ -39,7 +38,7 @@
   position: fixed;
   left: 0;
   right: 0;
-  top: 1.7em;
+  top: 2.5em;
   bottom: 0;
   margin: 8px 8px 16px;
   overflow-y: auto;

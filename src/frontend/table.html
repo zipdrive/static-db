@@ -9,7 +9,24 @@
   </head>
 
   <body>
-    <table id="table-content">
-    </table>
+    <div id="page">
+      <table id="table-content">
+      </table>
+    </div>
+    <div id="pagenav-bar">
+      <div>
+        <label for="pageSizeInput">Rows per Page:</label>
+        <input type="number" class="input" id="pageSizeInput">
+      </div>
+      <div>
+        <span id="firstPageButton" class="clickable-text">&#8676;</span>
+        <span id="prevPageButton" class="clickable-text">&#8592;</span>
+        <span>
+          Page&nbsp;<input type="number" class="input" id="pageNumInput">
+        </span>
+        <span id="nextPageButton" class="clickable-text">&#8594;</span>
+        <span id="lastPageButton" class="clickable-text">&#8677;</span>
+      </div>
+    </div>
   </body>
 </html>

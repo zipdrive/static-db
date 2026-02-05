@@ -127,7 +127,7 @@ impl MetadataColumnType {
             Self::SingleSelectDropdown(_) => {
                 // Create the column type, use that as the OID for the type
                 trans.execute(
-                    "INSERT INTO METADATA_TABLE_COLUMN_TYPE (MODE) VALUES (?1);", 
+                    "INSERT INTO METADATA_TYPE (MODE) VALUES (?1);", 
                     params![self.get_type_mode()]
                 )?;
                 let column_type_oid = trans.last_insert_rowid();
@@ -142,7 +142,7 @@ impl MetadataColumnType {
             Self::MultiSelectDropdown(_) => {
                 // Create the column type, use that as the OID for the type
                 trans.execute(
-                    "INSERT INTO METADATA_TABLE_COLUMN_TYPE (MODE) VALUES (?1);", 
+                    "INSERT INTO METADATA_TYPE (MODE) VALUES (?1);", 
                     params![self.get_type_mode()]
                 )?;
                 let column_type_oid = trans.last_insert_rowid();
@@ -170,7 +170,7 @@ impl MetadataColumnType {
             Self::ChildTable(_) => {
                 // Create the column type, use that as the OID for the type
                 trans.execute(
-                    "INSERT INTO METADATA_TABLE_COLUMN_TYPE (MODE) VALUES (?1);", 
+                    "INSERT INTO METADATA_TYPE (MODE) VALUES (?1);", 
                     params![self.get_type_mode()]
                 )?;
                 let column_type_oid = trans.last_insert_rowid();
@@ -224,7 +224,7 @@ impl MetadataColumnType {
 
                 // Delete the dropdown type from the metadata
                 trans.execute(
-                    "DELETE FROM METADATA_TABLE_COLUMN_TYPE WHERE OID = ?1", 
+                    "DELETE FROM METADATA_TYPE WHERE OID = ?1", 
                     params![column_type_oid]
                 )?;
 
@@ -241,7 +241,7 @@ impl MetadataColumnType {
 
                 // Delete the dropdown value table from the metadata
                 trans.execute(
-                    "DELETE FROM METADATA_TABLE_COLUMN_TYPE WHERE OID = ?1", 
+                    "DELETE FROM METADATA_TYPE WHERE OID = ?1", 
                     params![column_type_oid]
                 )?;
 
@@ -258,7 +258,7 @@ impl MetadataColumnType {
 
                 // Delete the metadata for the child type, which will cascade to delete the metadata for the child table
                 trans.execute(
-                    "DELETE FROM METADATA_TABLE_COLUMN_TYPE WHERE OID = ?1", 
+                    "DELETE FROM METADATA_TYPE WHERE OID = ?1", 
                     params![column_type_oid]
                 )?;
 

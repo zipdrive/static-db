@@ -29,7 +29,8 @@
 }
 #table-content > tfoot > tr > td {
   position: sticky;
-  bottom: 0;
+  bottom: -1px;
+  z-index: 1;
 }
 
 #table-content #add-new-column-button {
@@ -56,10 +57,12 @@
   padding: 2px 6px;
 
   &[placeholder]:empty::before {
+    display: block;
     content: attr(placeholder);
     z-index: 9;
     line-height: 1.7;
     color: var(--text-color-light);
+    width: 100%;
     text-align: center;
     word-break: break-all;
     user-select: none;
@@ -126,4 +129,27 @@
 .cell-error:hover .cell-error-tooltip {
   visibility: visible;
   opacity: 1;
+}
+
+
+body {
+  display: grid;
+  grid-template-rows: 1fr 2.5em;
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+}
+
+#page {
+  margin: 8px 12px 0;
+  padding: 0;
+  overflow: auto;
+}
+
+#pagenav-bar {
+  margin: 0;
+  padding: 0 12px;
+  background-color: var(--main-color-dark);
+  display: grid;
+  grid-template-columns: 1fr 1fr;
 }
