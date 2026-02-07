@@ -129,7 +129,10 @@ fn initialize_new_db_at_path<P: AsRef<Path>>(path: P) -> Result<(), error::Error
             ON DELETE SET DEFAULT
     );
 
-    -- METADATA_RPT_PARAMETER__REFERENCED stores adhoc parameters that link a row of a base table to a column in another table through some form of reference
+    -- METADATA_RPT_PARAMETER__REFERENCED stores adhoc parameters that link a row of a base table to [a column in] another table through some form of reference
+    -- [Reference] column: N-to-1
+    -- [Object] column: 1-to-1
+    -- [Table] column: 1-to-N
     CREATE TABLE METADATA_RPT_PARAMETER__REFERENCED (
         RPT_PARAMETER_OID INTEGER PRIMARY KEY REFERENCES METADATA_RPT_PARAMETER (OID)
             ON UPDATE CASCADE
@@ -137,7 +140,7 @@ fn initialize_new_db_at_path<P: AsRef<Path>>(path: P) -> Result<(), error::Error
         REFERENCED_THROUGH_PARAMETER_OID INTEGER NOT NULL REFERENCES METADATA_RPT_PARAMETER (OID) 
             ON UPDATE CASCADE
             ON DELETE CASCADE,
-        COLUMN_OID INTEGER NOT NULL REFERENCES METADATA_TABLE_COLUMN (OID)
+        COLUMN_OID INTEGER REFERENCES METADATA_TABLE_COLUMN (OID)
             ON UPDATE CASCADE
             ON DELETE CASCADE
     );

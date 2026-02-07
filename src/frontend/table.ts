@@ -106,10 +106,13 @@ if (urlParamTableOid) {
   async function refreshTableAsync() {
     console.debug("Now refreshing the entire contents of the table.");
 
-    let headNode: HTMLHeadElement | null = document.querySelector('head');
-    let tableColStyleNode: HTMLStyleElement = document.createElement('style');
-    tableColStyleNode.type = 'text/css';
-    headNode?.appendChild(tableColStyleNode);
+    // Record the old scroll position
+    let pageNode: HTMLDivElement = document.getElementById('page') as HTMLDivElement;
+    const scrollPosition: number = pageNode.scrollTop;
+
+    // Set up a stylesheet
+    let tableColStyleNode: HTMLStyleElement = document.getElementById('column-stylesheet') as HTMLStyleElement;
+    tableColStyleNode.innerHTML = '';
 
     // Strip the former contents of the table
     let tableNode: HTMLTableElement | null = document.querySelector('#table-content');
@@ -254,7 +257,7 @@ if (urlParamTableOid) {
     let currentRowNode: HTMLTableRowElement | null = null;
     let currentRowOid: number | null = null;
     onReceiveCell.onmessage = (cell) => {
-      if ('rowOid' in cell) {
+      if ('rowIndex' in cell) {
         // New row
         const rowOid = cell.rowOid;
         const rowIndex = cell.rowIndex;
@@ -266,7 +269,7 @@ if (urlParamTableOid) {
         // Add cell to current row
         if (currentRowNode && currentRowOid) {
           // Get current row and column OID
-          addTableColumnCellToRow(currentRowNode, tableOid, currentRowOid, cell);
+          addTableColumnCellToRow(currentRowNode, cell);
         }
       }
     };
@@ -282,6 +285,9 @@ if (urlParamTableOid) {
         cellChannel: onReceiveCell 
       }
     });
+
+    // Set the scrolling position back to what it was previously
+    pageNode.scrollTop = scrollPosition;
   }
 
   /**
@@ -321,7 +327,7 @@ if (urlParamTableOid) {
       } else {
         // Add cell to current row
         if (tableRowNode) {
-          addTableColumnCellToRow(tableRowNode, tableOid, rowOid, cell);
+          addTableColumnCellToRow(tableRowNode, cell);
         }
       }
     };
@@ -345,7 +351,8 @@ if (urlParamTableOid) {
 
   listen<number>("update-table-data", (e) => {
     navigator.locks.request('table-content', async () => {
-      if (e.payload == tableOid) {
+      const updateTableOid = e.payload;
+      if (updateTableOid == tableOid) {
         await refreshTableAsync();
       }
     });

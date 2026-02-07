@@ -11,7 +11,9 @@ import { Channel } from "@tauri-apps/api/core";
  * @param rowOid The OID of the row of the table that the cell belongs to.
  * @param cell Information about the cell itself.
  */
-export async function addTableColumnCellToRow(rowNode: HTMLTableRowElement, tableOid: number, rowOid: number, cell: TableColumnCell) {
+export async function addTableColumnCellToRow(rowNode: HTMLTableRowElement, cell: TableColumnCell) {
+  const tableOid = cell.tableOid;
+  const rowOid = cell.rowOid;
   const columnOid = cell.columnOid;
 
   // Insert cell node
@@ -43,26 +45,16 @@ export async function addTableColumnCellToRow(rowNode: HTMLTableRowElement, tabl
 
           // If necessary, verify type before uploading to database
           switch (primitiveType) {
-            case 'Integer':
-              let num: number = parseFloat(newPrimitiveValue);
-              if (!isNaN(num)) {
-                newPrimitiveValue = Math.round(num).toString();
-              }
-              break;
             case 'Date':
               let date: number = Date.parse(newPrimitiveValue);
-              if (isNaN(date)) {
-                newPrimitiveValue = null;
-              } else {
-                newPrimitiveValue = Math.round(0.001 * date).toString();
+              if (!isNaN(date)) {
+                newPrimitiveValue = new Date(date).toISOString();
               }
               break;
             case 'Timestamp':
               let timestamp: number = Date.parse(newPrimitiveValue);
-              if (isNaN(timestamp)) {
-                newPrimitiveValue = null;
-              } else {
-                newPrimitiveValue = Math.round(0.001 * timestamp).toString();
+              if (!isNaN(timestamp)) {
+                newPrimitiveValue = new Date(timestamp).toISOString();
               }
               break;
           }

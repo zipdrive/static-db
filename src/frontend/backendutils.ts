@@ -30,6 +30,8 @@ export type DropdownValue = {
 };
 
 export type TableColumnCell = {
+    tableOid: number,
+    rowOid: number,
     columnOid: number, 
     columnType: ColumnType, 
     trueValue: string | null,
@@ -104,6 +106,12 @@ export type Query = {
         tableOid: number,
         rowOid: number,
         cellChannel: Channel<TableRowCellChannelPacket>
+    }
+} | {
+    invokeAction: 'get_object_data',
+    invokeParams: {
+        tableOid: number,
+        objOid: number
     }
 };
 

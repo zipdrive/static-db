@@ -36,15 +36,15 @@ pub fn create(table_oid: i64, column_name: &str, column_type: data_type::Metadat
         Some(o) => {
             // If an explicit ordering was given, shift every column to its right by 1 in order to make space
             trans.execute(
-                "UPDATE METADATA_TABLE_COLUMN SET COLUMN_ORDERING = COLUMN_ORDERING + 1 WHERE TABLE_OID = ?1 AND COLUMN_ORDERING >= ?2;",
-                params![table_oid, o]
+                "UPDATE METADATA_TABLE_COLUMN SET COLUMN_ORDERING = COLUMN_ORDERING + 1 WHERE COLUMN_ORDERING >= ?1;",
+                params![o]
             )?;
             o
         },
         None => {
             // If no explicit ordering was given, insert at the back
             trans.query_one(
-                "SELECT COALESCE(MAX(COLUMN_ORDERING), 0) AS NEW_COLUMN_ORDERING FROM METADATA_TABLE_COLUMN WHERE TABLE_OID = ?1", 
+                "SELECT COALESCE(MAX(COLUMN_ORDERING), 0) AS NEW_COLUMN_ORDERING FROM METADATA_TABLE_COLUMN", 
                 params![table_oid], 
                 |row| row.get::<_, i64>(0)
             )?
@@ -117,10 +117,6 @@ pub fn create(table_oid: i64, column_name: &str, column_type: data_type::Metadat
 pub fn edit(table_oid: i64, column_oid: i64, column_name: &str, column_type: data_type::MetadataColumnType, column_style: &str, is_nullable: bool, is_unique: bool, is_primary_key: bool) -> Result<Option<i64>, error::Error> {
     let mut conn = db::open()?;
     let trans = conn.transaction()?;
-
-    // Drop the surrogate view
-    let drop_surrogate_cmd: String = format!("DROP VIEW IF EXISTS TABLE{table_oid}_SURROGATE");
-    trans.execute(&drop_surrogate_cmd, [])?;
 
     // Record the old values of the column metadata
     trans.execute(

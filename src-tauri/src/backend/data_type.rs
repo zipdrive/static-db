@@ -25,8 +25,8 @@ impl Primitive {
             Self::Boolean => "INTEGER",
             Self::Integer => "INTEGER",
             Self::Number => "REAL",
-            Self::Date => "INTEGER",
-            Self::Timestamp => "INTEGER",
+            Self::Date => "REAL",
+            Self::Timestamp => "REAL",
             Self::Text | Self::JSON => "TEXT",
             Self::File | Self::Image => "BLOB",
         }

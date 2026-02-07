@@ -68,26 +68,110 @@ enum Column {
     }
 }
 
+struct ReportQuery {
+    base_table_oid: i64,
+    select_cols_cmd: String,
+    select_tbls_cmd: String,
+    columns: Vec<Column>,
+    param_table_oids: HashSet<i64>
+}
+
+/*
+
+impl ReportQuery {
+    fn insert_column(&mut self, col_definition: String) {
+        self.select_cols_cmd = format!("{}, {col_definition}", self.select_cols_cmd);
+    }
+
+    fn insert_param_table(&mut self, trans: &Transaction, param_oid: i64) -> Result<(), error::Error> {
+        // First, check to make sure the parameter hasn't already been added
+        if self.param_table_oids.contains(&param_oid) {
+            return Ok(());
+        }
+
+        // Then, make sure to add any parameter it is dependent on
+        match trans.query_one(
+            "SELECT 
+                r.REFERENCED_THROUGH_PARAMETER_OID,
+                c.BASE_TABLE_OID,
+                c.REFERENCED_TABLE_OID
+            FROM METADATA_RPT_PARAMETER__REFERENCED r 
+            INNER JOIN (
+                SELECT
+                    RPT_PARAMETER_OID,
+                    TABLE_OID AS BASE_TABLE_OID
+                    TYPE_OID AS REFERENCED_TABLE_OID
+                FROM METADATA_TABLE_COLUMN
+                UNION
+                SELECT
+                    a.RPT_PARAMETER_OID,
+                    b.TABLE_OID AS BASE_TABLE_OID,
+                    b.TYPE_OID AS REFERENCED_TABLE_OID
+                FROM METADATA_RPT_PARAMETER__REFERENCED a
+                INNER JOIN METADATA_TABLE_COLUMN b ON b.OID = a.COLUMN_OID
+            ) c ON c.RPT_PARAMETER_OID = r.REFERENCED_THROUGH_PARAMETER_OID
+            WHERE r.RPT_PARAMETER_OID = ?1",
+            params![param_oid],
+            |row| {
+                Ok((
+                    row.get::<_, i64>("REFERENCED_THROUGH_PARAMETER_OID")?,
+                    row.get::<_, i64>("BASE_TABLE_OID")?,
+                    row.get::<_, i64>("REFERENCED_TABLE_OID")?
+                ))
+            }
+        ).optional()? {
+            Some((parent_param_oid, parent_table_oid, child_table_oid)) => {
+                // Make sure the parent parameter is added to the query
+                self.insert_param_table(trans, parent_param_oid);
+
+                // Add a join via that parent parameter
+                if parent_table_oid == self.base_table_oid {
+                    self.insert_table(format!("LEFT JOIN TABLE{child_table_oid} r{param_oid} ON t.COLUMN{} = r{param_oid}.OID"));
+                } else {
+
+                }
+                self.param_table_oids.insert(param_oid);
+            },
+            None => {}
+        }
+
+        // 
+        return Ok(());
+    }
+
+    fn insert_table(&mut self, tbl_definition: String) {
+        self.select_tbls_cmd = format!("{} {tbl_definition}", self.select_tbls_cmd);
+    }
+}
+
 /// Construct a SELECT query to get data from a table
 fn construct_data_query(trans: &Transaction, rpt_oid: i64, include_row_oid_clause: bool, include_parent_row_oid_clause: bool) -> Result<(String, LinkedList<Column>), error::Error> {
-    let base_table_oid: i64 = trans.query_one(
-        "SELECT BASE_TABLE_OID FROM (
+    // Determine the table OID of the table that forms the basis for the report
+    let (base_table_oid, mut subreport_base_parameter_oid) = trans.query_one(
+        "SELECT BASE_TABLE_OID, SUBREPORT_BASE_PARAMETER_OID FROM (
             SELECT
                 RPT_OID,
-                BASE_TABLE_OID
+                BASE_TABLE_OID,
+                NULL AS SUBREPORT_BASE_PARAMETER_OID
             FROM METADATA_RPT__REPORT
 
             UNION
 
             SELECT
                 s.RPT_OID,
-                c.TABLE_OID AS BASE_TABLE_OID
+                c.TABLE_OID AS BASE_TABLE_OID,
+                s.RPT_PARAMETER__REFERENCED__OID AS SUBREPORT_BASE_PARAMETER_OID
             FROM METADATA_RPT_COLUMN__SUBREPORT s
             INNER JOIN METADATA_RPT_PARAMETER__REFERENCED p ON p.RPT_PARAMETER_OID = s.RPT_PARAMETER__REFERENCED__OID
             INNER JOIN METADATA_TABLE_COLUMN c ON c.OID = p.COLUMN_OID
         ) WHERE RPT_OID = ?1", 
         params![rpt_oid], 
-        |row| row.get(0)
+        |row| {
+            Ok((
+                row.get::<_, i64>("BASE_TABLE_OID")?, 
+                row.get::<_, Option<i64>>("SUBREPORT_BASE_PARAMETER_OID")?
+            ))
+        }
     )?;
 
     let mut select_cols_cmd: String = String::from("t.OID");
@@ -95,6 +179,13 @@ fn construct_data_query(trans: &Transaction, rpt_oid: i64, include_row_oid_claus
     let mut columns = LinkedList::<Column>::new();
     let mut tbl_count: usize = 1;
     let mut param_ref_set: HashSet<i64> = HashSet::new();
+
+    match subreport_base_parameter_oid {
+        Some(param_oid) => {
+
+        },
+        None => {}
+    }
 
     db::query_iterate(trans,
         "SELECT 
@@ -145,3 +236,5 @@ fn construct_data_query(trans: &Transaction, rpt_oid: i64, include_row_oid_claus
 
     // TODO
 }
+
+     */
